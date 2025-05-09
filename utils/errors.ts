@@ -1,14 +1,19 @@
-const STATUS_CODES = {
+// utils/errors.ts
+
+export const STATUS_CODES = {
   OK: 200,
   BAD_REQUEST: 400,
   UNAUTHORIZED: 401,
   NOT_FOUND: 404,
   INTERNAL_SERVER_ERROR: 500,
   SERVICE_UNAVAILABLE: 503,
-};
+} as const;
 
-class BaseError extends Error {
-  constructor(type, statusCode, message) {
+export class BaseError extends Error {
+  public type: string;
+  public statusCode: number;
+
+  constructor(type: string, statusCode: number, message: string) {
     super(message);
     Object.setPrototypeOf(this, new.target.prototype);
     this.type = type;
@@ -17,46 +22,32 @@ class BaseError extends Error {
   }
 }
 
-// Bad Request Error
-class BadRequestError extends BaseError {
+export class BadRequestError extends BaseError {
   constructor(message = "Bad Request") {
     super("BadRequestError", STATUS_CODES.BAD_REQUEST, message);
   }
 }
 
-// Unauthorized Error
-class UnauthorizedError extends BaseError {
+export class UnauthorizedError extends BaseError {
   constructor(message = "Unauthorized") {
     super("UnauthorizedError", STATUS_CODES.UNAUTHORIZED, message);
   }
 }
 
-// Not Found Error
-class NotFoundError extends BaseError {
+export class NotFoundError extends BaseError {
   constructor(message = "Not Found") {
     super("NotFoundError", STATUS_CODES.NOT_FOUND, message);
   }
 }
 
-// Internal Server Error
-class InternalServerError extends BaseError {
+export class InternalServerError extends BaseError {
   constructor(message = "Internal Server Error") {
     super("InternalServerError", STATUS_CODES.INTERNAL_SERVER_ERROR, message);
   }
 }
 
-// Service Unavailable Error
-class ServiceUnavailableError extends BaseError {
+export class ServiceUnavailableError extends BaseError {
   constructor(message = "Service Unavailable") {
     super("ServiceUnavailableError", STATUS_CODES.SERVICE_UNAVAILABLE, message);
   }
 }
-
-module.exports = {
-  BaseError,
-  BadRequestError,
-  UnauthorizedError,
-  NotFoundError,
-  InternalServerError,
-  ServiceUnavailableError,
-};
