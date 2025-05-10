@@ -3,12 +3,11 @@ import configureServer from "./server";
 import config from "./config";
 
 const app = express();
-const PORT = config.PORT || 8000;
 
 configureServer(app)
   .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
+    app.listen(config.PORT, () => {
+      console.log(`🟢 Server is running on port ${config.PORT}`);
     });
   })
   .catch((err) => {
