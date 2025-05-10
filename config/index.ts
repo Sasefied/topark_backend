@@ -2,7 +2,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const config = {
-  PORT: process.env.PORT || 8000,
+  // parse the string from process.env.PORT, or fall back to 8000
+  PORT: parseInt(process.env.PORT || "8000", 10),
   MONGO_URI: process.env.MONGO_URI,
   MONGO_DB_NAME: process.env.MONGO_DB_NAME || "toprak",
 
