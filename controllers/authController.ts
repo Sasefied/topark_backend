@@ -1,3 +1,4 @@
+// Imports and Configurations
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
@@ -7,6 +8,7 @@ import { responseHandler } from "../utils/responseHandler";
 import crypto from "crypto";
 import sendEmail from "../utils/mail";
 
+// JWT Secret and Expiration Configuration
 const JWT_SECRET: Secret = config.JWT_SECRET || "default-secret";
 const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
 
@@ -54,19 +56,22 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
  *         description: Internal server error
  */
 
-// 1.signup Controller
+// 1.signup Controller: Controller for registering a new user
 export const signup = async (req: Request, res: Response): Promise<void> => {
   const { firstName, lastName, email, password, consentGiven } = req.body;
 
   try {
+    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       responseHandler(res, 400, "User already exists");
       return;
     }
 
+    // Hash the password for security
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Create new user instance
     const user = new User({
       firstName,
       lastName,
@@ -75,6 +80,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       consentGiven: !!consentGiven,
     });
 
+    // Save user to database
     await user.save();
 
     responseHandler(res, 201, "User registered successfully");
@@ -131,11 +137,12 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
  *         description: Invalid credentials
  */
 
-// 2.login Controller
+// 2.login Controller: Controller for user login and JWT token issuance
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 
   try {
+    // Fetch user by email
     const userDoc = await User.findOne({ email });
 
     if (!userDoc) {
@@ -145,12 +152,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     const user = userDoc.toObject() as IUser;
 
+    // Validate password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       responseHandler(res, 401, "Invalid credentials");
       return;
     }
 
+    // Create JWT payload
     const payload = {
       iss: "ToprakApp",
       sub: user._id.toString(),
@@ -159,10 +168,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       email: user.email,
     };
 
+    // Sign JWT token
     const token = jwt.sign(payload, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN,
     } as SignOptions);
 
+    // Respond with token and user details
     res.json({
       token,
       user: {
@@ -227,7 +238,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  *         description: Server error
  */
 
-// 3.Forgot Password Controller
+// 3.Forgot Password Controller: Controller to initiate password reset process by sending an email with reset link
 export const forgotPassword = async (
   req: Request,
   res: Response
@@ -242,28 +253,53 @@ export const forgotPassword = async (
       return;
     }
 
-    // Generate secure token
+    // Generate secure random token
     const resetToken = crypto.randomBytes(32).toString("hex");
     console.log("RESET TOKEN:", resetToken);
+
+    // Hash the token for storage
     const hashedToken = crypto
       .createHash("sha256")
       .update(resetToken)
       .digest("hex");
 
+    // Store hased token and expiry in user document
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await user.save();
 
+    // Construct frontend reset URL
     const resetURL = `${config.MY_APP_FRONTEND_URL}/reset-password/${resetToken}`;
 
+    // Email consent
     const html = `
-      <p>Hello ${user.firstName},</p>
-      <p>You requested a password reset. Click the link below to set a new password:</p>
-      <a href="${resetURL}">${resetURL}</a>
-      <p>If you didn’t request this, you can safely ignore this email.</p>
-    `;
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+      <p>Hello <strong>${user.firstName}</strong>,</p>
+      <p>We received a request to reset your password. Please click the button below to set a new password:</p>
+      <a
+        href="${resetURL}"
+        style="
+          background-color: #28a745;
+          color: white;
+          padding: 10px 20px;
+          text-decoration: none;
+          border-radius: 5px;
+          display: inline-block;
+          font-weight: bold;
+        "
+        target="_blank"
+      >
+        Reset Password
+      </a>
+      <p style="margin-top: 10px;">This link will expire in <strong>1 hour</strong>.</p>
+      <p>If you did not request this, you can safely ignore this email.</p>
+      <hr style="margin-top: 20px; border: none; border-top: 1px solid #eee;">
+      <p style="font-size: 12px; color: #999;">&copy; ${new Date().getFullYear()} Toprak Team. All rights reserved.</p>
+    </div>
+  `;
 
+    // Send an email
     const mailSent = await sendEmail({
       to: user.email,
       subject: "Password Reset",
@@ -338,7 +374,7 @@ export const forgotPassword = async (
  *         description: Server error
  */
 
-// 4.Reset Password Controller
+// 4.Reset Password Controller: Controller to reset password using the token received in the email
 export const resetPassword = async (
   req: Request,
   res: Response
@@ -346,14 +382,17 @@ export const resetPassword = async (
   const { newPassword } = req.body;
   const token = req.params.token;
 
+  // Validate required data
   if (!token || !newPassword) {
     responseHandler(res, 400, "Token and new password are required");
     return;
   }
 
   try {
+    // Hash the received token to match stored token
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
+    // Find user with valid token and unexpired reset link
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: new Date() },
@@ -364,9 +403,11 @@ export const resetPassword = async (
       return;
     }
 
+    // Hash new password and clear reset token fields
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
+
     await user.save();
 
     responseHandler(res, 200, "Password has been reset successfully");

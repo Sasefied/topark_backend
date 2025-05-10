@@ -1,9 +1,6 @@
 import express from "express";
 
 import authRoutes from "../routes/authRoutes";
-import userRoutes from "../routes/userRoutes";
-import clientRoutes from "../routes/clientRoutes";
-import dashboardRoutes from "../routes/dashboardRoutes";
 import teamRoutes from "../routes/teamRoutes";
 
 const router = express.Router();
@@ -18,9 +15,6 @@ router.get("/health", (_req, res) => {
 
 // Mount the modular routes
 router.use("/auth", authRoutes);
-router.use("/users", userRoutes);
-router.use("/clients", clientRoutes);
-router.use("/dashboard", dashboardRoutes);
 router.use("/team", teamRoutes);
 
 export default router;
