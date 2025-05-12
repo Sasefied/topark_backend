@@ -23,6 +23,8 @@ const swaggerDefinition = {
       description: isProd ? "Production server" : "Development server",
     },
   ],
+  /*
+  // Uncomment the following sections to enable global authorization
   components: {
     securitySchemes: {
       bearerAuth: {
@@ -37,6 +39,7 @@ const swaggerDefinition = {
       bearerAuth: [],
     },
   ],
+  */
 };
 
 const options = {
