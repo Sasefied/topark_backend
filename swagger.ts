@@ -1,8 +1,12 @@
-// File: swagger.ts (create this in your project root or config folder)
-
 import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { Express } from "express";
+import config from "./config";
+
+// Ensure your route files have JSDoc @swagger annotations in comments
+// so swagger-jsdoc can pick up the operations for each endpoint.
+
+const isProd = process.env.NODE_ENV === "production";
 
 const swaggerDefinition = {
   openapi: "3.0.0",
@@ -13,8 +17,10 @@ const swaggerDefinition = {
   },
   servers: [
     {
-      url: "http://localhost:8000/api",
-      description: "Development server",
+      url: isProd
+        ? "https://topark-backend.onrender.com/api"
+        : `http://localhost:${config.PORT}/api`,
+      description: isProd ? "Production server" : "Development server",
     },
   ],
   components: {
@@ -34,14 +40,11 @@ const swaggerDefinition = {
 };
 
 const options = {
-  definition: {
-    openapi: "3.0.0",
-    info: {
-      title: "Toprak API Documentation",
-      version: "1.0.0",
-    },
-  },
-  apis: ["./routes/**/*.ts", "./controllers/**/*.ts"], // Adjust if needed
+  definition: swaggerDefinition,
+  apis: [
+    "./api/**/*.ts", // Adjusted to match your project structure
+    "./controllers/**/*.ts",
+  ],
 };
 
 const swaggerSpec = swaggerJSDoc(options);
