@@ -44,10 +44,7 @@ const swaggerDefinition = {
 
 const options = {
   definition: swaggerDefinition,
-  apis: [
-    "./api/**/*.ts", // Adjusted to match your project structure
-    "./controllers/**/*.ts",
-  ],
+  apis: ["./controllers/**/*.ts"],
 };
 
 const swaggerSpec = swaggerJSDoc(options);
