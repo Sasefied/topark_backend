@@ -17,7 +17,7 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
  * /api/auth/signup:
  *   post:
  *     summary: Register a new user
- *     description: Creates a new user with first name, last name, email, password, and consent.
+ *     description: Creates a new user with first name, last name, company name, email, password, and consent.
  *     tags:
  *       - Auth
  *     requestBody:
@@ -29,8 +29,10 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
  *             required:
  *               - firstName
  *               - lastName
+ *               - companyName
  *               - email
  *               - password
+ *               - consentGiven
  *             properties:
  *               firstName:
  *                 type: string
@@ -38,6 +40,9 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
  *               lastName:
  *                 type: string
  *                 example: Doe
+ *               companyName:
+ *                 type: string
+ *                 example: Toprak Trading Co.
  *               email:
  *                 type: string
  *                 example: john@example.com
@@ -51,16 +56,33 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
  *       201:
  *         description: User registered successfully
  *       400:
- *         description: User already exists
+ *         description: User already exists or missing required fields
  *       500:
  *         description: Internal server error
  */
 
-// 1.signup Controller: Controller for registering a new user
+// Signup Controller
 export const signup = async (req: Request, res: Response): Promise<void> => {
-  const { firstName, lastName, email, password, consentGiven } = req.body;
+  const { firstName, lastName, companyName, email, password, consentGiven } =
+    req.body;
 
   try {
+    // Validate consent
+    if (!consentGiven) {
+      responseHandler(res, 400, "Consent is required to create an account");
+      return;
+    }
+
+    // Validate company name
+    if (!companyName) {
+      responseHandler(
+        res,
+        400,
+        "Company name is required to create an account"
+      );
+      return;
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -68,13 +90,14 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Hash the password for security
+    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new user instance
+    // Create new user
     const user = new User({
       firstName,
       lastName,
+      companyName,
       email,
       password: hashedPassword,
       consentGiven: !!consentGiven,
@@ -319,9 +342,9 @@ export const forgotPassword = async (
 
 /**
  * @swagger
- * /api/auth/reset-password/token:
+ * /api/auth/reset-password/{token}:
  *   post:
- *     summary: Reset password using token
+ *     summary: Reset password using the token received in the email
  *     tags:
  *       - Auth
  *     parameters:
@@ -330,7 +353,7 @@ export const forgotPassword = async (
  *         required: true
  *         schema:
  *           type: string
- *         description: Reset password token from email link
+ *         description: Reset password token received via email link
  *     requestBody:
  *       required: true
  *       content:
@@ -345,7 +368,7 @@ export const forgotPassword = async (
  *                 example: newSecurePassword123
  *     responses:
  *       200:
- *         description: Password reset successful
+ *         description: Password has been reset successfully, and confirmation email has been sent
  *         content:
  *           application/json:
  *             schema:
@@ -358,7 +381,7 @@ export const forgotPassword = async (
  *                   type: string
  *                   example: Password has been reset successfully
  *       400:
- *         description: Invalid or expired reset token
+ *         description: Invalid or expired reset token or missing required data
  *         content:
  *           application/json:
  *             schema:
@@ -371,10 +394,21 @@ export const forgotPassword = async (
  *                   type: string
  *                   example: Invalid or expired reset token
  *       500:
- *         description: Server error
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: error
+ *                 message:
+ *                   type: string
+ *                   example: Internal server error
  */
 
-// 4.Reset Password Controller: Controller to reset password using the token received in the email
+// 4. Reset Password Controller: Controller to reset password using the token received in the email
 export const resetPassword = async (
   req: Request,
   res: Response
@@ -382,17 +416,14 @@ export const resetPassword = async (
   const { newPassword } = req.body;
   const token = req.params.token;
 
-  // Validate required data
   if (!token || !newPassword) {
     responseHandler(res, 400, "Token and new password are required");
     return;
   }
 
   try {
-    // Hash the received token to match stored token
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
-    // Find user with valid token and unexpired reset link
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: new Date() },
@@ -403,12 +434,36 @@ export const resetPassword = async (
       return;
     }
 
-    // Hash new password and clear reset token fields
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
 
     await user.save();
+
+    // ✅ Send confirmation email
+    const userName = `${user.firstName} ${user.lastName}`.trim() || "User";
+
+    const html = `
+    <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333;">
+      <p>Dear <strong>${userName}</strong>,</p>
+
+      <p>We are writing to confirm that your password has been <strong>successfully reset</strong>.</p>
+
+      <p>If you did <strong>not</strong> request this change, please contact our support team <strong>immediately</strong> to secure your account.</p>
+
+      <p>Thank you for choosing <strong>Toprak SCM Ltd.</strong>. We are committed to ensuring the safety and security of your account.</p>
+
+      <p>Kind regards,<br/>
+      The <strong>Toprak SCM Ltd.</strong> Team</p>
+    </div>
+  `;
+
+    // Send an email
+    const mailSent = await sendEmail({
+      to: user.email,
+      subject: "Password Reset Confirmation",
+      html,
+    });
 
     responseHandler(res, 200, "Password has been reset successfully");
   } catch (error) {
