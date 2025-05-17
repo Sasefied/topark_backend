@@ -1,3 +1,5 @@
+/// <reference types="../types/express" />
+
 import express from "express";
 
 import authRoutes from "../routes/authRoutes";

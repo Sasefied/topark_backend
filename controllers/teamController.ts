@@ -7,25 +7,17 @@ import config from "../config";
 import sendEmail from "../utils/mail";
 import { responseHandler } from "../utils/responseHandler";
 import { SignOptions } from "jsonwebtoken";
+import mongoose from "mongoose";
 
 /**
  * @swagger
  * /api/team/onboarding/team-name:
  *   post:
- *     summary: Save Team Name During Onboarding
- *     description: Allows an authenticated user to save their team name as part of the onboarding process.
+ *     summary: Save team name and register the creator as Admin
  *     tags:
  *       - Team Onboarding
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: header
- *         name: Authorization
- *         required: true
- *         description: Bearer token for authorization.
- *         schema:
- *           type: string
- *           example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
  *     requestBody:
  *       required: true
  *       content:
@@ -37,11 +29,10 @@ import { SignOptions } from "jsonwebtoken";
  *             properties:
  *               teamName:
  *                 type: string
- *                 description: The name of the team to be created.
- *                 example: Toprak Innovators
+ *                 example: Toprak Traders
  *     responses:
  *       201:
- *         description: Team name saved successfully.
+ *         description: Team name saved successfully with creator added as Admin
  *         content:
  *           application/json:
  *             schema:
@@ -53,40 +44,10 @@ import { SignOptions } from "jsonwebtoken";
  *                 message:
  *                   type: string
  *                   example: Team name saved successfully
- *                 data:
- *                   type: object
- *                   properties:
- *                     _id:
- *                       type: string
- *                       example: 663b0f1a4f1a2c001f3b0e5d
- *                     teamName:
- *                       type: string
- *                       example: Toprak Innovators
- *                     createdBy:
- *                       type: string
- *                       example: 663b0f1a4f1a2c001f3b0e5c
  *       400:
- *         description: Team name is required.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Team name is required
- *       401:
- *         description: Unauthorized - Missing or invalid bearer token.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Unauthorized
+ *         description: Team name is required
  *       500:
- *         description: Internal server error.
+ *         description: Internal server error
  */
 
 // STEP 1: Save Team Name
@@ -103,10 +64,46 @@ export const saveTeamName = async (
   }
 
   try {
-    const team = new Team({ teamName, createdBy: userId });
+    const existingTeam = await Team.findOne({ teamName });
+    if (existingTeam) {
+      responseHandler(
+        res,
+        400,
+        "Team name already exists. Please choose another."
+      );
+      return;
+    }
+
+    const creatorUser = await User.findById(userId);
+    if (!creatorUser) {
+      responseHandler(res, 404, "User not found");
+      return;
+    }
+
+    const team = new Team({
+      teamName,
+      createdBy: userId,
+      members: [
+        {
+          user: userId,
+          email: creatorUser.email,
+          roles: ["Admin"],
+          status: "active",
+        },
+      ],
+    });
+
     await team.save();
 
-    responseHandler(res, 201, "Team name saved successfully", "success", team);
+    await User.findByIdAndUpdate(userId, { teamId: team._id }, { new: true });
+
+    responseHandler(
+      res,
+      201,
+      "Team name saved successfully. Proceed to set primary usage.",
+      "success",
+      team
+    );
   } catch (error) {
     console.error("Error saving team name:", error);
     responseHandler(res, 500, "Internal server error");
@@ -118,7 +115,7 @@ export const saveTeamName = async (
  * /api/team/onboarding/primary-usage:
  *   patch:
  *     summary: Update the primary usage of the team
- *     description: Allows the user to set the primary usage of the team (Buying, Selling, or both).
+ *     description: Allows the user to set the primary usage of the team (Buying, Selling, or Buying and Selling).
  *     tags:
  *       - Team Onboarding
  *     security:
@@ -155,14 +152,33 @@ export const saveTeamName = async (
  *                   properties:
  *                     _id:
  *                       type: string
+ *                       example: 663b0f1a4f1a2c001f3b0e5d
  *                     teamName:
  *                       type: string
+ *                       example: Toprak Innovators
  *                     primaryUsage:
  *                       type: string
+ *                       example: Buying and Selling
  *       400:
  *         description: Invalid or missing primary usage value
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Primary usage must be one of: Buying, Selling, or Buying and Selling"
  *       404:
  *         description: Team not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Team not found
  *       500:
  *         description: Internal server error
  */
@@ -200,7 +216,7 @@ export const updatePrimaryUsage = async (
     responseHandler(
       res,
       200,
-      "Primary usage updated successfully",
+      "Primary usage set successfully. Proceed to add your team members.",
       "success",
       team
     );
@@ -215,7 +231,9 @@ export const updatePrimaryUsage = async (
  * /api/team/onboarding/team-members:
  *   post:
  *     summary: Add team members and send invitation emails
- *     description: Adds one or more members to the team with specified roles and sends them email invitations to join the team.
+ *     description: >
+ *       Adds one or more members to the team with specified roles and sends them email invitations to join the team.
+ *       The creator is auto-added as Admin with active status if not already present.
  *     tags:
  *       - Team Onboarding
  *     security:
@@ -231,20 +249,21 @@ export const updatePrimaryUsage = async (
  *             properties:
  *               members:
  *                 type: array
+ *                 description: List of members to add with email and role.
  *                 items:
  *                   type: object
  *                   required:
  *                     - email
- *                     - role
+ *                     - roles
  *                   properties:
  *                     email:
  *                       type: string
  *                       format: email
  *                       example: "member@example.com"
- *                     role:
+ *                     roles:
  *                       type: string
- *                       enum: [Trader, Seller, Supplier, Operations, Cashier, Sales, Accountant, Admin]
- *                       example: "Trader"
+ *                       enum: [Admin, Buyer, Seller, Cashier, Accountant, Operations]
+ *                       example: "Buyer"
  *     responses:
  *       200:
  *         description: Team members added and invitations sent successfully
@@ -279,9 +298,10 @@ export const updatePrimaryUsage = async (
  *                               type: string
  *                           status:
  *                             type: string
+ *                             enum: [active, pending]
  *                             example: pending
  *       400:
- *         description: Invalid members data provided
+ *         description: Invalid members data provided or user email missing from context
  *       404:
  *         description: Team not found for this user
  *       500:
@@ -299,11 +319,11 @@ export const addTeamMembers = async (req: Request, res: Response) => {
     }
 
     for (const member of members) {
-      if (!member.email || !member.role) {
+      if (!member.email || !member.roles) {
         return responseHandler(
           res,
           400,
-          "Each member must have an email and role"
+          "Each member must have an email and roles"
         );
       }
     }
@@ -313,34 +333,56 @@ export const addTeamMembers = async (req: Request, res: Response) => {
       return responseHandler(res, 404, "Team not found for this user");
     }
 
+    if (!req.userEmail) {
+      return responseHandler(
+        res,
+        400,
+        "User email is missing from request context"
+      );
+    }
+
+    const teamId = team._id as mongoose.Types.ObjectId;
+
     for (const member of members) {
       const existingMember = team.members?.find(
         (m) => m.email === member.email
       );
 
+      const existingUser = await User.findOne({ email: member.email });
+
       if (existingMember) {
-        // Merge new role if not already present
-        if (!existingMember.roles.includes(member.role)) {
-          existingMember.roles.push(member.role);
+        if (!existingMember.roles.includes(member.roles)) {
+          existingMember.roles.push(member.roles);
         }
       } else {
-        // Add new member
-        team.members?.push({
+        const newMember: any = {
           email: member.email,
-          roles: [member.role],
+          roles: [member.roles],
           status: "pending",
-        });
+        };
+
+        if (existingUser) {
+          newMember.user = existingUser._id;
+          if (
+            !existingUser.teamId ||
+            existingUser.teamId.toString() !== teamId.toString()
+          ) {
+            existingUser.teamId = teamId;
+            await existingUser.save();
+          }
+        }
+
+        team.members?.push(newMember);
       }
     }
 
     const updatedTeam = await team.save();
 
-    // Send invitation emails
     for (const member of members) {
       const token = jwt.sign(
         {
           email: member.email,
-          role: member.role,
+          roles: member.roles,
           teamId: team._id,
         },
         config.JWT_INVITE_SECRET,
@@ -355,21 +397,9 @@ export const addTeamMembers = async (req: Request, res: Response) => {
 
       const html = `
         <p>Hello,</p>
-        <p>You’ve been invited to join the team as a <strong>${member.role}</strong>.</p>
+        <p>You’ve been invited to join the team as a <strong>${member.roles}</strong>.</p>
         <p>Please click the button below to set your name and password:</p>
-        <a
-          href="${inviteLink}"
-          style="
-            background-color: #007bff;
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 5px;
-            display: inline-block;
-            font-weight: bold;
-          "
-          target="_blank"
-        >
+        <a href="${inviteLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;" target="_blank">
           Accept Invitation
         </a>
         <p style="margin-top: 10px;">This link will expire in <strong>${config.JWT_INVITE_EXPIRES_IN}</strong>.</p>
@@ -385,7 +415,7 @@ export const addTeamMembers = async (req: Request, res: Response) => {
     responseHandler(
       res,
       200,
-      "Team members added and invitations sent",
+      "Team members added successfully. Invitations have been sent.",
       "success",
       updatedTeam
     );
@@ -399,11 +429,11 @@ export const addTeamMembers = async (req: Request, res: Response) => {
  * @swagger
  * /api/team/onboarding/invite/accept:
  *   post:
- *     summary: Accept Team Invitation and Register or Activate User
- *     description: |
- *       Accepts an invitation sent via email, validates the token, and either:
- *       - Registers a new user if they do not exist.
- *       - Activates their team membership if they already have an account.
+ *     summary: Accept team invitation and activate user account
+ *     description: >
+ *       Accepts a team invitation using the provided token, registers or updates the user account,
+ *       and requires consent to the terms and conditions.
+ *       On success, returns a JWT token and the user information.
  *     tags:
  *       - Team Onboarding
  *     requestBody:
@@ -417,73 +447,118 @@ export const addTeamMembers = async (req: Request, res: Response) => {
  *               - firstName
  *               - lastName
  *               - password
+ *               - consentGiven
  *             properties:
  *               token:
  *                 type: string
- *                 description: JWT invitation token received via email.
- *                 example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 description: Invitation token sent to the user’s email
  *               firstName:
  *                 type: string
- *                 description: First name of the user (required even for existing users to confirm identity).
  *                 example: John
  *               lastName:
  *                 type: string
- *                 description: Last name of the user (required even for existing users to confirm identity).
  *                 example: Doe
  *               password:
  *                 type: string
- *                 description: Password for the account (required even for existing users to confirm identity).
- *                 example: StrongPassword123!
+ *                 format: password
+ *                 example: StrongP_ssw0rd
+ *               consentGiven:
+ *                 type: boolean
+ *                 description: Must be true to accept terms and conditions
+ *                 example: true
  *     responses:
  *       200:
- *         description: Invitation accepted and account activated or updated successfully.
+ *         description: Invitation accepted and user account activated or updated
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
  *                 message:
  *                   type: string
  *                   example: Invitation accepted and account activated/updated
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     token:
+ *                       type: string
+ *                       description: JWT token for user authentication
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         _id:
+ *                           type: string
+ *                         firstName:
+ *                           type: string
+ *                         lastName:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         roles:
+ *                           type: array
+ *                           items:
+ *                             type: [string]
+ *                         teamId:
+ *                           type: string
+ *                         companyName:
+ *                           type: string
+ *                           example: Toprak Trading Co.
  *       400:
- *         description: Invalid or expired invitation token or missing required fields.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Invalid or expired invitation token
+ *         description: Invalid input data or expired/invalid token
+ *       500:
+ *         description: Internal server error
  */
 
-// STEP 4: Accept Invitation and Register
 export const acceptInvitation = async (req: Request, res: Response) => {
-  const { token, firstName, lastName, password } = req.body;
+  const { token, firstName, lastName, password, consentGiven } = req.body;
 
-  if (!token || !firstName || !lastName || !password) {
-    return responseHandler(res, 400, "All fields are required");
+  if (!token || !firstName || !lastName || !password || !consentGiven) {
+    return responseHandler(
+      res,
+      400,
+      "All fields including consent are required"
+    );
   }
 
   try {
     const decoded = jwt.verify(token, config.JWT_INVITE_SECRET) as {
       email: string;
-      role: string;
+      roles: string;
       teamId: string;
     };
 
+    // Fetch the team to get the team name as companyName
+    const team = await Team.findById(decoded.teamId);
+    const companyName = team?.teamName || "Unknown Company";
+
     let user = await User.findOne({ email: decoded.email });
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     if (!user) {
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // Create new user with companyName auto-filled from team
       user = new User({
         firstName,
         lastName,
         email: decoded.email,
         password: hashedPassword,
-        role: decoded.role, // Consider merging roles if user already exists
+        roles: [decoded.roles],
+        teamId: new mongoose.Types.ObjectId(decoded.teamId),
+        companyName: companyName,
       });
-
+      await user.save();
+    } else {
+      // Update existing user details
+      user.firstName = firstName;
+      user.lastName = lastName;
+      user.password = hashedPassword;
+      if (!user.roles.includes(decoded.roles)) {
+        user.roles.push(decoded.roles);
+      }
+      user.teamId = new mongoose.Types.ObjectId(decoded.teamId);
+      user.companyName = companyName; // Sync companyName for consistency
       await user.save();
     }
 
@@ -493,10 +568,19 @@ export const acceptInvitation = async (req: Request, res: Response) => {
       { $set: { "members.$.status": "active" } }
     );
 
+    // Generate auth token for the user
+    const authToken = jwt.sign(
+      { id: user._id, email: user.email, teamId: user.teamId },
+      config.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
     responseHandler(
       res,
       200,
-      "Invitation accepted and account activated/updated"
+      "Invitation accepted and account activated/updated",
+      "success",
+      { token: authToken, user }
     );
   } catch (error) {
     console.error("Accept Invitation Error:", error);

@@ -3,11 +3,9 @@ import swaggerUi from "swagger-ui-express";
 import { Express } from "express";
 import config from "./config";
 
-// Ensure your route files have JSDoc @swagger annotations in comments
-// so swagger-jsdoc can pick up the operations for each endpoint.
-
 const isProd = process.env.NODE_ENV === "production";
 
+// securitySchemes
 const swaggerDefinition = {
   openapi: "3.0.0",
   info: {
@@ -18,13 +16,11 @@ const swaggerDefinition = {
   servers: [
     {
       url: isProd
-        ? "https://topark-backend.onrender.com/api"
-        : `http://localhost:${config.PORT}/api`,
+        ? "https://topark-backend.onrender.com/"
+        : `http://localhost:${config.PORT}/`,
       description: isProd ? "Production server" : "Development server",
     },
   ],
-  /*
-  // Uncomment the following sections to enable global authorization
   components: {
     securitySchemes: {
       bearerAuth: {
@@ -34,17 +30,14 @@ const swaggerDefinition = {
       },
     },
   },
-  security: [
-    {
-      bearerAuth: [],
-    },
-  ],
-  */
+  security: [],
 };
 
 const options = {
   definition: swaggerDefinition,
-  apis: ["./controllers/**/*.ts"],
+  apis: isProd
+    ? ["./dist/controllers/**/*.js", "./dist/routes/**/*.js"] // Production
+    : ["./controllers/**/*.ts", "./routes/**/*.ts"], // Development
 };
 
 const swaggerSpec = swaggerJSDoc(options);

@@ -1,22 +1,21 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
-export type TeamRole =
-  | "Trader"
+export type TeamRoles =
+  | "Buyer"
   | "Seller"
-  | "Supplier"
   | "Operations"
   | "Cashier"
-  | "Sales"
   | "Accountant"
   | "Admin";
 
-export type MemberStatus = "pending" | "active";
+export type MemberStatus = "pending" | "active" | "inactive";
 
 export interface ITeamMember {
   _id?: Types.ObjectId;
+  user?: Types.ObjectId; // Added user reference
   email: string;
-  roles: TeamRole[];
-  status?: "pending" | "active";
+  roles: TeamRoles[];
+  status?: MemberStatus;
 }
 
 export interface ITeam extends Document {
@@ -30,24 +29,16 @@ export interface ITeam extends Document {
 
 const teamMemberSchema: Schema = new Schema(
   {
-    email: { type: String, required: true },
+    user: { type: Schema.Types.ObjectId, ref: "User" }, // Added user ref
+    email: { type: String, required: true }, // Removed unique constraint
     roles: {
       type: [String],
-      enum: [
-        "Trader",
-        "Seller",
-        "Supplier",
-        "Operations",
-        "Cashier",
-        "Sales",
-        "Accountant",
-        "Admin",
-      ],
+      enum: ["Seller", "Operations", "Cashier", "Accountant", "Admin", "Buyer"],
       required: true,
     },
     status: {
       type: String,
-      enum: ["pending", "active"],
+      enum: ["pending", "active", "inactive"],
       default: "pending",
     },
   },

@@ -8,7 +8,11 @@ export interface IUser extends Document {
   lastName: string;
   email: string;
   password: string;
+  companyName: string;
   consentGiven?: boolean;
+  roles: string[];
+  teamId: mongoose.Types.ObjectId;
+  status?: "pending" | "active" | "inactive";
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   createdAt?: Date;
@@ -23,7 +27,10 @@ const userSchema: Schema<IUser> = new Schema(
     lastName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+    companyName: { type: String, required: true },
     consentGiven: { type: Boolean, default: false },
+    roles: { type: [String], default: ["Admin"] },
+    teamId: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
   },
