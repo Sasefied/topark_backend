@@ -512,6 +512,7 @@ export const addTeamMembers = async (req: Request, res: Response) => {
  *         description: Internal server error
  */
 
+// 4. Accept the invitation came via email.
 export const acceptInvitation = async (req: Request, res: Response) => {
   const { token, firstName, lastName, password, consentGiven } = req.body;
 

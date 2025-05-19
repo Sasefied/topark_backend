@@ -20,7 +20,7 @@ export interface ITeamMember {
 
 export interface ITeam extends Document {
   teamName: string;
-  primaryUsage?: "Buying" | "Selling" | "Buying and Selling";
+  primaryUsage?: "Buying" | "Buying and Selling";
   createdBy: Types.ObjectId;
   members?: ITeamMember[];
   createdAt?: Date;
@@ -50,8 +50,7 @@ const teamSchema: Schema<ITeam> = new Schema(
     teamName: { type: String, required: true },
     primaryUsage: {
       type: String,
-      enum: ["Buying", "Selling", "Buying and Selling"],
-      default: "Buying and Selling",
+      enum: ["Buying", "Buying and Selling"],
     },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     members: [teamMemberSchema],
