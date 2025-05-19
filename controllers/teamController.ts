@@ -352,12 +352,12 @@ export const addTeamMembers = async (req: Request, res: Response) => {
 
       if (existingMember) {
         if (!existingMember.roles.includes(member.roles)) {
-          existingMember.roles.push(member.roles);
+          existingMember.roles.push(...member.roles);
         }
       } else {
         const newMember: any = {
           email: member.email,
-          roles: [member.roles],
+          roles: member.roles,
           status: "pending",
         };
 
