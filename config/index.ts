@@ -17,7 +17,7 @@ const config = {
 
   // Frontend link base
   MY_APP_FRONTEND_URL:
-    process.env.MY_APP_FRONTEND_URL || "http://localhost:3000",
+    process.env.MY_APP_FRONTEND_URL || "http://localhost:5173",
 
   // SMTP settings for email sending
   SMTP_HOST: process.env.SMTP_HOST || "",
