@@ -61,7 +61,7 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
  *         description: Internal server error
  */
 
-// Signup Controller
+// 1. Signup Controller
 export const signup = async (req: Request, res: Response): Promise<void> => {
   const { firstName, lastName, companyName, email, password, consentGiven } =
     req.body;
@@ -87,6 +87,16 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       responseHandler(res, 400, "User already exists");
+      return;
+    }
+
+    const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordStrengthRegex.test(password)) {
+      responseHandler(
+        res,
+        400,
+        "Password must include uppercase, lowercase, and a number, and be at least 8 characters long."
+      );
       return;
     }
 
@@ -197,7 +207,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     } as SignOptions);
 
     // Respond with token and user details
-    res.json({
+    res.status(200).json({
       token,
       user: {
         firstName: user.firstName,
@@ -267,10 +277,10 @@ export const forgotPassword = async (
   res: Response
 ): Promise<void> => {
   const { email } = req.body;
+  if (!email) return responseHandler(res, 400, "Email is required");
 
   try {
     const user = await User.findOne({ email });
-
     if (!user) {
       responseHandler(res, 404, "User not found");
       return;
@@ -289,7 +299,6 @@ export const forgotPassword = async (
     // Store hased token and expiry in user document
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
     await user.save();
 
     // Construct frontend reset URL
@@ -335,7 +344,7 @@ export const forgotPassword = async (
       responseHandler(res, 500, "Error sending email");
     }
   } catch (error) {
-    console.error("Forgot Password Error:", error);
+    console.error("ForgotPassword Error:", { email });
     responseHandler(res, 500, "Internal server error");
   }
 };
@@ -421,6 +430,21 @@ export const resetPassword = async (
     return;
   }
 
+  // if (newPassword.length < 8) {
+  //   responseHandler(res, 400, "Password must be at least 8 characters");
+  //   return;
+  // }
+
+  const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+  if (!passwordStrengthRegex.test(newPassword)) {
+    responseHandler(
+      res,
+      400,
+      "Password must include uppercase, lowercase, and a number, and be at least 8 characters long."
+    );
+    return;
+  }
+
   try {
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
@@ -437,12 +461,10 @@ export const resetPassword = async (
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
-
     await user.save();
 
-    // ✅ Send confirmation email
+    // Send confirmation email
     const userName = `${user.firstName} ${user.lastName}`.trim() || "User";
-
     const html = `
     <div style="font-family: Arial, sans-serif; font-size: 16px; color: #333;">
       <p>Dear <strong>${userName}</strong>,</p>
@@ -466,8 +488,8 @@ export const resetPassword = async (
     });
 
     responseHandler(res, 200, "Password has been reset successfully");
-  } catch (error) {
-    console.error("Reset Password Error:", error);
+  } catch (error: any) {
+    console.error("Reset Password Error:", error.message || error);
     responseHandler(res, 500, "Internal server error");
   }
 };

@@ -1,13 +1,24 @@
 import { Request, Response } from "express";
-import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Team from "../schemas/Team";
 import User from "../schemas/User";
 import config from "../config";
 import sendEmail from "../utils/mail";
 import { responseHandler } from "../utils/responseHandler";
-import { SignOptions } from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
 import mongoose from "mongoose";
+
+type TeamRoles =
+  | "Admin"
+  | "Buyer"
+  | "Seller"
+  | "Cashier"
+  | "Accountant"
+  | "Operations";
+interface TeamMemberInput {
+  email: string;
+  roles: TeamRoles[];
+}
 
 /**
  * @swagger
@@ -313,21 +324,41 @@ export const addTeamMembers = async (req: Request, res: Response) => {
   const userId = req.userId;
   const { members } = req.body;
 
+  const validRoles: TeamRoles[] = [
+    "Admin",
+    "Buyer",
+    "Seller",
+    "Cashier",
+    "Accountant",
+    "Operations",
+  ];
+
   try {
+    // Validate members payload
     if (!Array.isArray(members) || members.length === 0) {
       return responseHandler(res, 400, "Members list is required");
     }
 
-    for (const member of members) {
-      if (!member.email || !member.roles) {
+    for (const member of members as TeamMemberInput[]) {
+      if (
+        !member.email ||
+        !Array.isArray(member.roles) ||
+        member.roles.length === 0
+      ) {
         return responseHandler(
           res,
           400,
-          "Each member must have an email and roles"
+          "Each member must have an email and at least one role"
         );
+      }
+      for (const role of member.roles) {
+        if (!validRoles.includes(role)) {
+          return responseHandler(res, 400, `Invalid role: ${role}`);
+        }
       }
     }
 
+    // Find team based on user
     const team = await Team.findOne({ createdBy: userId });
     if (!team) {
       return responseHandler(res, 404, "Team not found for this user");
@@ -351,9 +382,11 @@ export const addTeamMembers = async (req: Request, res: Response) => {
       const existingUser = await User.findOne({ email: member.email });
 
       if (existingMember) {
-        if (!existingMember.roles.includes(member.roles)) {
-          existingMember.roles.push(...member.roles);
-        }
+        const currentRoles = existingMember.roles as string[];
+        const newRoles = member.roles.filter(
+          (role: string) => !currentRoles.includes(role)
+        );
+        existingMember.roles = [...currentRoles, ...newRoles];
       } else {
         const newMember: any = {
           email: member.email,
@@ -378,7 +411,7 @@ export const addTeamMembers = async (req: Request, res: Response) => {
 
     const updatedTeam = await team.save();
 
-    for (const member of members) {
+    for (const member of members as TeamMemberInput[]) {
       const token = jwt.sign(
         {
           email: member.email,
@@ -386,18 +419,18 @@ export const addTeamMembers = async (req: Request, res: Response) => {
           teamId: team._id,
         },
         config.JWT_INVITE_SECRET,
-        {
-          expiresIn: config.JWT_INVITE_EXPIRES_IN,
-        } as SignOptions
+        { expiresIn: config.JWT_INVITE_EXPIRES_IN } as SignOptions
       );
 
       const inviteLink = `${
         config.MY_APP_FRONTEND_URL
       }/invite/accept?token=${token}&email=${encodeURIComponent(member.email)}`;
 
+      const rolesText = member.roles.join(", ");
+
       const html = `
         <p>Hello,</p>
-        <p>You’ve been invited to join the team as a <strong>${member.roles}</strong>.</p>
+        <p>You’ve been invited to join the team as a <strong>${rolesText}</strong>.</p>
         <p>Please click the button below to set your name and password:</p>
         <a href="${inviteLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;" target="_blank">
           Accept Invitation
@@ -419,8 +452,8 @@ export const addTeamMembers = async (req: Request, res: Response) => {
       "success",
       updatedTeam
     );
-  } catch (error) {
-    console.error("Add Team Members Error:", error);
+  } catch (error: any) {
+    console.error("Add Team Members Error:", error.message || error);
     responseHandler(res, 500, "Internal server error");
   }
 };

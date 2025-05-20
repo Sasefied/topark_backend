@@ -33,7 +33,7 @@ const teamMemberSchema: Schema = new Schema(
     email: { type: String, required: true }, // Removed unique constraint
     roles: {
       type: [String],
-      enum: ["Seller", "Operations", "Cashier", "Accountant", "Admin", "Buyer"],
+      enum: ["Buyer", "Seller", "Operations", "Cashier", "Accountant", "Admin"],
       required: true,
     },
     status: {
