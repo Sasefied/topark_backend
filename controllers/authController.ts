@@ -302,6 +302,7 @@ export const forgotPassword = async (
     await user.save();
 
     // Construct frontend reset URL
+    console.log("Frontend URL:", config.MY_APP_FRONTEND_URL);
     const resetURL = `${config.MY_APP_FRONTEND_URL}/reset-password/${resetToken}`;
 
     // Email consent
@@ -330,6 +331,9 @@ export const forgotPassword = async (
       <p style="font-size: 12px; color: #999;">&copy; ${new Date().getFullYear()} Toprak Team. All rights reserved.</p>
     </div>
   `;
+
+    console.log("RESET URL:", resetURL);
+    console.log("ENV URL:", config.MY_APP_FRONTEND_URL);
 
     // Send an email
     const mailSent = await sendEmail({
