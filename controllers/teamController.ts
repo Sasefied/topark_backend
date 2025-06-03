@@ -7,6 +7,7 @@ import sendEmail from "../utils/mail";
 import { responseHandler } from "../utils/responseHandler";
 import jwt, { SignOptions } from "jsonwebtoken";
 import mongoose from "mongoose";
+import { totalmem } from "os";
 
 type TeamRoles =
   | "Admin"
@@ -560,25 +561,27 @@ export const acceptInvitation = async (req: Request, res: Response) => {
   try {
     const decoded = jwt.verify(token, config.JWT_INVITE_SECRET) as {
       email: string;
-      roles: string;
+      roles: string[];
       teamId: string;
     };
 
     // Fetch the team to get the team name as companyName
     const team = await Team.findById(decoded.teamId);
-    const companyName = team?.teamName || "Unknown Company";
+    if (!team) {
+      return responseHandler(res, 400, "Team not found");
+    }
+    const companyName = team.teamName || "Unknown Company";
 
     let user = await User.findOne({ email: decoded.email });
     const hashedPassword = await bcrypt.hash(password, 10);
 
     if (!user) {
-      // Create new user with companyName auto-filled from team
       user = new User({
         firstName,
         lastName,
         email: decoded.email,
         password: hashedPassword,
-        roles: [decoded.roles],
+        roles: decoded.roles || [], 
         teamId: new mongoose.Types.ObjectId(decoded.teamId),
         companyName: companyName,
       });
@@ -588,12 +591,19 @@ export const acceptInvitation = async (req: Request, res: Response) => {
       user.firstName = firstName;
       user.lastName = lastName;
       user.password = hashedPassword;
-      if (!user.roles.includes(decoded.roles)) {
-        user.roles.push(decoded.roles);
+      if (decoded.roles && Array.isArray(decoded.roles) && user) {
+        // Add new roles that don't already exist
+        decoded.roles.forEach((role) => {
+          if (user && !user.roles.includes(role)) {
+            user.roles.push(role);
+          }
+        });
       }
-      user.teamId = new mongoose.Types.ObjectId(decoded.teamId);
-      user.companyName = companyName; // Sync companyName for consistency
-      await user.save();
+      if (user) {
+        user.teamId = new mongoose.Types.ObjectId(decoded.teamId);
+        user.companyName = companyName;
+        await user.save();
+      }
     }
 
     // Update team member status to "active"
@@ -606,7 +616,7 @@ export const acceptInvitation = async (req: Request, res: Response) => {
     const authToken = jwt.sign(
       { id: user._id, email: user.email, teamId: user.teamId },
       config.JWT_SECRET,
-      { expiresIn: "1d" }
+      { expiresIn: "7d" }
     );
 
     responseHandler(
@@ -617,7 +627,7 @@ export const acceptInvitation = async (req: Request, res: Response) => {
       { token: authToken, user }
     );
   } catch (error) {
-    console.error("Accept Invitation Error:", error);
-    responseHandler(res, 400, "Invalid or expired invitation token");
+    return responseHandler(res, 400, "Invalid or expired invitation token");
   }
 };
+

@@ -1,7 +1,7 @@
 import { Schema, model, Document, Types } from "mongoose";
 
 export interface IProduct extends Document {
-  organizationId: Types.ObjectId; // Link to Organization
+  organizationId: Types.ObjectId;
   productName: string;
   quantity: number;
   pricePerUnit: number;

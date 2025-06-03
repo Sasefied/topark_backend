@@ -4,7 +4,7 @@ import {
   saveTeamName,
   updatePrimaryUsage,
   addTeamMembers,
-  acceptInvitation,
+  acceptInvitation
 } from "../controllers/teamController";
 import { body } from "express-validator";
 import auth from "../middlewares/auth";
@@ -55,5 +55,7 @@ router.post(
   validate,
   acceptInvitation
 );
+
+
 
 export default router;

@@ -273,3 +273,38 @@ export const deactivateUser = async (req: Request, res: Response) => {
     responseHandler(res, 500, "Internal server error");
   }
 };
+export const deleteMember = async (req: Request, res: Response) => {
+  try {
+    const { teamMemberId } = req.params;
+    const userId = req.userId;
+    if (!userId) {
+      return responseHandler(res, 401, "Unauthorized");
+    }
+    const team = await Team.findOne({ createdBy: userId });
+    if (!team) {
+      return responseHandler(res, 404, "No team found where you are the Admin");
+    }
+
+    const memberIndex = team.members?.findIndex(
+      (member) => member._id?.toString() === teamMemberId
+    );
+
+    if (memberIndex === undefined || memberIndex === -1) {
+      return responseHandler(res, 404, "Team member not found in your team");
+    }
+
+    team.members?.splice(memberIndex, 1);
+    await team.save();
+
+    responseHandler(
+      res,
+      200,
+      "Team member deleted successfully",
+      "success",
+      {}
+    );
+  } catch (error) {
+    console.error("Error deleting team member:", error);
+    responseHandler(res, 500, "Internal server error");
+  }
+};
