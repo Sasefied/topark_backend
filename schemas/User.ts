@@ -9,6 +9,7 @@ export interface IUser extends Document {
   email: string;
   password: string;
   companyName: string;
+  companyReferenceNumber?: string;
   consentGiven?: boolean;
   roles: string[];
   teamId: mongoose.Types.ObjectId;
@@ -28,6 +29,7 @@ const userSchema: Schema<IUser> = new Schema(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     companyName: { type: String, required: true },
+    companyReferenceNumber: {type: String, required: true},
     consentGiven: { type: Boolean, default: false },
     roles: { type: [String], default: ["Admin"] },
     teamId: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },

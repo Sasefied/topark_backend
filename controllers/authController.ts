@@ -63,7 +63,7 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
 
 // 1. Signup Controller
 export const signup = async (req: Request, res: Response): Promise<void> => {
-  const { firstName, lastName, companyName, email, password, consentGiven } =
+  const { firstName, lastName, companyName, companyReferenceNumber, email, password, consentGiven } =
     req.body;
 
   try {
@@ -79,6 +79,15 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         res,
         400,
         "Company name is required to create an account"
+      );
+      return;
+    }
+    // Validate company reference number
+    if (!companyReferenceNumber) {
+      responseHandler(
+        res,
+        400,
+        "Company Reference Number is required to create an account"
       );
       return;
     }
@@ -108,6 +117,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       firstName,
       lastName,
       companyName,
+      companyReferenceNumber,
       email,
       password: hashedPassword,
       consentGiven: !!consentGiven,
