@@ -14,9 +14,30 @@ export const getAllProducts = async (req: Request, res: Response): Promise<void>
   }
 };
 
+// export const getProductById = async (req: Request, res: Response): Promise<void> => {
+//   try {
+//     const { productId } = req.params;
+//     const product = await AdminProduct.findById(productId);
+//     if (!product) {
+//       res.status(404).json({ message: "Product not found" });
+//       return;
+//     }
+//     res.status(200).json(product);
+//   } catch (error: any) {
+//     console.error("Error fetching product:", error.message, error.stack);
+//     res.status(500).json({ message: "Error fetching product", error: error.message });
+//   }
+// };
 export const getProductById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { productId } = req.params;
+
+    // Validate if productId is a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      res.status(400).json({ message: "Invalid product ID format" });
+      return;
+    }
+
     const product = await AdminProduct.findById(productId);
     if (!product) {
       res.status(404).json({ message: "Product not found" });
@@ -28,7 +49,6 @@ export const getProductById = async (req: Request, res: Response): Promise<void>
     res.status(500).json({ message: "Error fetching product", error: error.message });
   }
 };
-
 export const createProduct = async (req: Request, res: Response): Promise<void> => {
   try {
     const { productCode, ...productData }: Partial<ProductData> = req.body;
@@ -38,10 +58,6 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
     const requiredFields: (keyof ProductData)[] = [
       "productName",
       "category",
-      "basePrice",
-      "quantity",
-      "unit",
-      "goodsPrice",
       "consTypes",
     ];
     for (const field of requiredFields) {
@@ -124,32 +140,21 @@ export const deleteProduct = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ message: "Error deleting product", error: error.message });
   }
 };
-
 export const searchCategories = async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log("searchCategories endpoint called with query:", req.query);
     const { query } = req.query;
-    let categories: string[] = [];
-    categories = await AdminProduct.distinct("category");
-
-    // Optionally include secondaryCategory if needed
-    const secondaryCategories = await AdminProduct.distinct("secondaryCategory");
-    categories = [...new Set([...categories, ...secondaryCategories.filter((cat) => cat)])];
-
-    // Filter categories if a query is provided
-    if (typeof query === "string" && query.trim()) {
-      const regex = new RegExp(query.trim(), "i");
-      categories = categories.filter((category) => regex.test(category));
+    if (!query || typeof query !== "string") {
+      res.status(400).json({ message: "Query parameter is required and must be a string" });
+      return;
     }
-
-    // Sort categories alphabetically
-    categories.sort((a, b) => a.localeCompare(b));
-
-    console.log("Returning categories:", categories);
-    res.status(200).json({
-      message: "Categories retrieved successfully",
-      categories,
-    });
+    const categories = await AdminProduct.aggregate([
+      { $match: { category: { $regex: query, $options: "i" } } },
+      { $group: { _id: "$category" } },
+      { $sort: { _id: 1 } },
+      { $limit: 10 },
+      { $project: { _id: 0, category: "$_id" } },
+    ]);
+    res.status(200).json(categories);
   } catch (error: any) {
     console.error("Error searching categories:", error.message, error.stack);
     res.status(500).json({ message: "Error searching categories", error: error.message });

@@ -4,10 +4,10 @@ import { createProduct, deleteProduct, getAllProducts, getProductById,searchCate
 
 const router = express.Router();
 
+router.get("/categories", searchCategories);
 router.post('/', createProduct);
 router.get('/', getAllProducts);
 router.get('/:productId', getProductById);
-router.get("/categories", searchCategories);
 router.put('/:productId', updateProduct);
 router.delete('/:productId', deleteProduct);
 

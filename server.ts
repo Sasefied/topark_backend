@@ -8,7 +8,7 @@ import multer from "multer";
 import { setupSwaggerDocs } from "./swagger";
 import orgRoutes from "./routes/orgRoutes";
 import { jwtAuth } from "./middlewares/jwtAuth";
-import adminUserRoutes from "./routes/adminUserRoutes";
+import adminUserRoutes from "./routes/TeamMemberRoutes";
 
 const upload = multer();
 

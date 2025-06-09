@@ -26,7 +26,7 @@ router.patch(
   "/onboarding/primary-usage",
   auth,
   body("primaryUsage")
-    .isIn(["Buying", "Selling", "Buying and Selling"])
+    .isIn(["Only Buying", "Buying and Selling"])
     .withMessage("Must be Buying, Selling, or Buying and Selling"),
   validate,
   updatePrimaryUsage

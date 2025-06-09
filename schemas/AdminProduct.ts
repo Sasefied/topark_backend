@@ -8,10 +8,6 @@ export interface IAdminProduct extends Document {
   referenceNumber?: string;
   category: string;
   secondaryCategory?: string;
-  basePrice: number;
-  quantity: number;
-  unit: "Kg" | "Box" | "Palette" | "Other";
-  goodsPrice: number;
   consTypes: "Bought" | "Commission" | "Expected";
   allowOversold: boolean;
   comments?: string;
@@ -48,11 +44,7 @@ const AdminProductSchema = new Schema<IAdminProduct>(
     variety: { type: String, required: false },
     referenceNumber: { type: String, required: false },
     category: { type: String, required: true },
-    secondaryCategory: { type: String, required: false },
-    basePrice: { type: Number, required: true },
-    quantity: { type: Number, required: true },
-    unit: { type: String, enum: ["Kg", "Box", "Palette", "Other"], required: true },
-    goodsPrice: { type: Number, required: true },
+    secondaryCategory: { type: String },
     consTypes: { type: String, enum: ["Bought", "Commission", "Expected"], required: true },
     allowOversold: { type: Boolean, required: true, default: false },
     comments: { type: String, required: false },

@@ -4,7 +4,7 @@ import {
   updateTeamMember,
   deactivateUser,
   deleteMember,
-} from "../controllers/adminUserController";
+} from "../controllers/TeamMemberController";
 import auth from "../middlewares/auth";
 
 const router = Router();
