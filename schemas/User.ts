@@ -1,7 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import crypto from "crypto";
 
-// Define the TypeScript interface for User
 export interface IUser extends Document {
   _id: string;
   firstName: string;
@@ -9,7 +8,7 @@ export interface IUser extends Document {
   email: string;
   password: string;
   companyName: string;
-  companyReferenceNumber?: string;
+  companyReferenceNumber?: string; // Optional
   consentGiven?: boolean;
   roles: string[];
   teamId: mongoose.Types.ObjectId;
@@ -21,7 +20,6 @@ export interface IUser extends Document {
   createPasswordResetToken: () => string;
 }
 
-// Define the Mongoose schema
 const userSchema: Schema<IUser> = new Schema(
   {
     firstName: { type: String, required: true },
@@ -29,9 +27,15 @@ const userSchema: Schema<IUser> = new Schema(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     companyName: { type: String, required: true },
-    companyReferenceNumber: {type: String, required: true},
+    companyReferenceNumber: { type: String, unique: true }, // Removed required
     consentGiven: { type: Boolean, default: false },
-    roles: { type: [String], default: ["Admin"] },
+    roles: [
+      {
+        type: String,
+        enum: ["Admin", "Buyer", "Seller", "Cashier", "Accountant", "Operations"],
+        default: ["Admin"],
+      },
+    ],
     teamId: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
@@ -39,19 +43,12 @@ const userSchema: Schema<IUser> = new Schema(
   { timestamps: true }
 );
 
-// Method to create and store a reset token
 userSchema.methods.createPasswordResetToken = function (): string {
   const resetToken = crypto.randomBytes(32).toString("hex");
-
-  this.resetPasswordToken = crypto
-    .createHash("sha256")
-    .update(resetToken)
-    .digest("hex");
-  this.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 min validity
-
+  this.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+  this.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 min
   return resetToken;
 };
 
-// Export the model
 const User = mongoose.model<IUser>("User", userSchema);
 export default User;

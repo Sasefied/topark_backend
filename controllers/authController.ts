@@ -7,59 +7,11 @@ import config from "../config";
 import { responseHandler } from "../utils/responseHandler";
 import crypto from "crypto";
 import sendEmail from "../utils/mail";
+import Team from "../schemas/Team";
 
 // JWT Secret and Expiration Configuration
 const JWT_SECRET: Secret = config.JWT_SECRET || "default-secret";
 const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
-
-/**
- * @swagger
- * /api/auth/signup:
- *   post:
- *     summary: Register a new user
- *     description: Creates a new user with first name, last name, company name, email, password, and consent.
- *     tags:
- *       - Auth
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - firstName
- *               - lastName
- *               - companyName
- *               - email
- *               - password
- *               - consentGiven
- *             properties:
- *               firstName:
- *                 type: string
- *                 example: John
- *               lastName:
- *                 type: string
- *                 example: Doe
- *               companyName:
- *                 type: string
- *                 example: Toprak Trading Co.
- *               email:
- *                 type: string
- *                 example: john@example.com
- *               password:
- *                 type: string
- *                 example: Password123
- *               consentGiven:
- *                 type: boolean
- *                 example: true
- *     responses:
- *       201:
- *         description: User registered successfully
- *       400:
- *         description: User already exists or missing required fields
- *       500:
- *         description: Internal server error
- */
 
 // 1. Signup Controller
 export const signup = async (req: Request, res: Response): Promise<void> => {
@@ -89,6 +41,11 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         400,
         "Company Reference Number is required to create an account"
       );
+      return;
+    }
+    const existingcompanyReferenceNumber = await User.findOne({ companyReferenceNumber });
+    if (existingcompanyReferenceNumber) {
+      responseHandler(res, 400, "Comapny Reference Number already exists");
       return;
     }
 
@@ -121,6 +78,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       email,
       password: hashedPassword,
       consentGiven: !!consentGiven,
+      roles: ["Admin"]
     });
 
     // Save user to database
@@ -133,96 +91,164 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-/**
- * @swagger
- * /api/auth/login:
- *   post:
- *     summary: User Login
- *     tags:
- *       - Auth
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *             properties:
- *               email:
- *                 type: string
- *                 example: testuser@example.com
- *               password:
- *                 type: string
- *                 example: Password123
- *     responses:
- *       200:
- *         description: Login successful, returns JWT token
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 token:
- *                   type: string
- *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *                 user:
- *                   type: object
- *                   properties:
- *                     firstName:
- *                       type: string
- *                     lastName:
- *                       type: string
- *                     email:
- *                       type: string
- *       401:
- *         description: Invalid credentials
- */
-
 // 2.login Controller: Controller for user login and JWT token issuance
+// export const login = async (req: Request, res: Response): Promise<void> => {
+//   const { email, password } = req.body;
+
+//   try {
+//     // Fetch user by email
+//     const userDoc = await User.findOne({ email });
+//     if (!userDoc) {
+//       responseHandler(res, 401, "Invalid credentials");
+//       return;
+//     }
+
+//     const user = userDoc.toObject() as IUser;
+
+//     // Validate password
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) {
+//       responseHandler(res, 401, "Invalid credentials");
+//       return;
+//     }
+
+//     //check if user has a team
+//     let team: (typeof Team.prototype & { _id: any }) | null = await Team.findOne({createdBy: user._id});
+//     if(!team && user.roles.includes("Admin")){
+//       team = new Team({
+//         teamName: `${user.companyName} Team`,
+//         createdBy: user._id,
+//         members: [
+//           {
+//             user: user._id,
+//             email: user.email,
+//             roles: ['Admin'],
+//             status: "active"
+//           }
+//         ]
+//       });
+//       await team.save();
+//       await User.findByIdAndUpdate(user._id, { teamId: team._id}, {new: true});
+//     }
+
+
+
+//     // Create JWT payload
+//     const payload = {
+//       iss: "ToprakApp",
+//       sub: user._id.toString(),
+//       firstName: user.firstName,
+//       lastName: user.lastName,
+//       email: user.email,
+//       roles: user.roles,
+//       teamId: team ? team._id.toString() : null,
+//     };
+
+//     // Sign JWT token
+//     const token = jwt.sign(payload, JWT_SECRET, {
+//       expiresIn: JWT_EXPIRES_IN,
+//     } as SignOptions);
+
+//     // Respond with token and user details
+//     res.status(200).json({
+//       token,
+//       user: {
+//         firstName: user.firstName,
+//         lastName: user.lastName,
+//         email: user.email,
+//         roles: user.roles,
+//       },
+//       team: team
+//        ? {
+//         id: team._id,
+//         teamName: team.teamName,
+//         primaryUsage: team.primaryUsage || null,
+//       }
+//       : null
+//     });
+//   } catch (error) {
+//     console.error("Login Error:", error);
+//     responseHandler(res, 500, "Internal server error");
+//   }
+// };
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 
-  try {
-    // Fetch user by email
-    const userDoc = await User.findOne({ email });
+  if (!email || !password) {
+    responseHandler(res, 400, "Email and password are required");
+    return;
+  }
 
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    responseHandler(res, 400, "Invalid email format");
+    return;
+  }
+
+  try {
+    const userDoc = await User.findOne({ email });
     if (!userDoc) {
       responseHandler(res, 401, "Invalid credentials");
       return;
     }
 
     const user = userDoc.toObject() as IUser;
-
-    // Validate password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       responseHandler(res, 401, "Invalid credentials");
       return;
     }
 
-    // Create JWT payload
+    let team = await Team.findOne({ createdBy: user._id });
+    if (!team && user.roles.includes("Admin")) {
+      team = new Team({
+        teamName: `${user.companyName} Team`,
+        createdBy: user._id,
+        members: [
+          {
+            user: user._id,
+            email: user.email,
+            roles: ["Admin"],
+            status: "active",
+          },
+        ],
+      });
+      await team.save();
+      await User.findByIdAndUpdate(user._id, { teamId: team._id }, { new: true });
+    }
+
     const payload = {
       iss: "ToprakApp",
       sub: user._id.toString(),
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
+      roles: user.roles,
+      teamId: team ? String(team._id) : null,
     };
 
-    // Sign JWT token
     const token = jwt.sign(payload, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN,
     } as SignOptions);
 
-    // Respond with token and user details
     res.status(200).json({
-      token,
-      user: {
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
+      status: "success",
+      data: {
+        token,
+        user: {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          roles: user.roles,
+        },
+        team: team
+          ? {
+              id: team._id,
+              teamName: team.teamName,
+              primaryUsage: team.primaryUsage || null,
+            }
+          : null,
       },
     });
   } catch (error) {
@@ -230,56 +256,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     responseHandler(res, 500, "Internal server error");
   }
 };
-
-/**
- * @swagger
- * /api/auth/forgot-password:
- *   post:
- *     summary: Request password reset email
- *     tags:
- *       - Auth
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *             properties:
- *               email:
- *                 type: string
- *                 example: testuser@example.com
- *     responses:
- *       200:
- *         description: Reset password email sent
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                   example: Reset password email sent
- *       404:
- *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: error
- *                 message:
- *                   type: string
- *                   example: User not found
- *       500:
- *         description: Server error
- */
 
 // 3.Forgot Password Controller: Controller to initiate password reset process by sending an email with reset link
 export const forgotPassword = async (
@@ -363,73 +339,6 @@ export const forgotPassword = async (
   }
 };
 
-/**
- * @swagger
- * /api/auth/reset-password/{token}:
- *   post:
- *     summary: Reset password using the token received in the email
- *     tags:
- *       - Auth
- *     parameters:
- *       - in: path
- *         name: token
- *         required: true
- *         schema:
- *           type: string
- *         description: Reset password token received via email link
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - newPassword
- *             properties:
- *               newPassword:
- *                 type: string
- *                 example: newSecurePassword123
- *     responses:
- *       200:
- *         description: Password has been reset successfully, and confirmation email has been sent
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                   example: Password has been reset successfully
- *       400:
- *         description: Invalid or expired reset token or missing required data
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: error
- *                 message:
- *                   type: string
- *                   example: Invalid or expired reset token
- *       500:
- *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: error
- *                 message:
- *                   type: string
- *                   example: Internal server error
- */
 
 // 4. Reset Password Controller: Controller to reset password using the token received in the email
 export const resetPassword = async (

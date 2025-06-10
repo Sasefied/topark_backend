@@ -3,67 +3,6 @@ import User from "../schemas/User";
 import { responseHandler } from "../utils/responseHandler";
 import Team from "../schemas/Team";
 
-/**
- * @swagger
- * /api/admin/team-members:
- *   get:
- *     summary: Get members of the team created by the logged-in Admin
- *     description: >
- *       Retrieves all members of the team where the logged-in user is the Admin (creator).
- *       Only the members array is returned, not the entire team document.
- *     tags:
- *       - Admin
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Team members fetched successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                   example: Team members fetched successfully
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       user:
- *                         type: string
- *                         description: User ID reference
- *                         example: 682739b20bbd8ae918aa14fd
- *                       email:
- *                         type: string
- *                         description: Email of the team member
- *                         example: sreenu926@gmail.com
- *                       roles:
- *                         type: array
- *                         description: Roles assigned to the team member
- *                         items:
- *                           type: string
- *                           example: Admin
- *                       status:
- *                         type: string
- *                         enum: [pending, active, inactive]
- *                         example: active
- *                       _id:
- *                         type: string
- *                         description: Member entry ID in the team document
- *                         example: 682740518b71e6235ac34505
- *       401:
- *         description: Unauthorized - Bearer token missing or invalid
- *       404:
- *         description: No team found where you are the Admin (creator)
- *       500:
- *         description: Internal server error
- */
-
 // 1. Fetch all Team members (users): GET  http://localhost:8000/api/admin/team-members
 export const listTeamUsers = async (req: Request, res: Response) => {
   try {
@@ -97,53 +36,6 @@ export const listTeamUsers = async (req: Request, res: Response) => {
     responseHandler(res, 500, "Internal server error");
   }
 };
-
-/**
- * @swagger
- * /api/admin/team-members/{teamMemberId}:
- *   patch:
- *     summary: Edit a team member's details by Member Entry ID (not User ID)
- *     tags:
- *       - Admin
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: teamMemberId
- *         schema:
- *           type: string
- *         required: true
- *         description: The ID of the team member entry in the team document
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               firstName:
- *                 type: string
- *                 example: UpdatedFirstName
- *               lastName:
- *                 type: string
- *                 example: UpdatedLastName
- *               roles:
- *                 type: array
- *                 items:
- *                   type: string
- *                 example: ["Buyer", "Seller"]
- *     responses:
- *       200:
- *         description: Team member updated successfully
- *       400:
- *         description: Invalid input or bad request
- *       401:
- *         description: Unauthorized or team not found
- *       404:
- *         description: Team member not found in your team
- *       500:
- *         description: Internal server error
- */
 
 //2. Edit user(team member) details PATCH /api/admin/team-members/:teamMemberId
 export const updateTeamMember = async (req: Request, res: Response) => {
@@ -203,34 +95,6 @@ export const updateTeamMember = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * @swagger
- * /api/admin/team-members/{teamMemberId}/deactivate:
- *   patch:
- *     summary: Deactivate or suspend a team member by Member Entry ID (not User ID)
- *     tags:
- *       - Admin
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: teamMemberId
- *         schema:
- *           type: string
- *         required: true
- *         description: The ID of the team member entry in the team document
- *     responses:
- *       200:
- *         description: User deactivated successfully
- *       400:
- *         description: Invalid input or bad request
- *       401:
- *         description: Unauthorized or team not found
- *       404:
- *         description: Team member not found in your team
- *       500:
- *         description: Internal server error
- */
 
 // 3. Deactivate/suspend the user: PATCH /api/admin/team-members/:teamMemberId/deactivate
 export const deactivateUser = async (req: Request, res: Response) => {
@@ -273,6 +137,8 @@ export const deactivateUser = async (req: Request, res: Response) => {
     responseHandler(res, 500, "Internal server error");
   }
 };
+
+//4. deleteMember
 export const deleteMember = async (req: Request, res: Response) => {
   try {
     const { teamMemberId } = req.params;
