@@ -1,14 +1,25 @@
-import express from 'express'
-import { createProduct, deleteProduct, getAllProducts, getProductById,searchCategories,updateProduct } from "../controllers/adminProductController";
-
+import express from "express";
+import {
+  checkProductName,
+  createProduct,
+  deleteProduct,
+  getAllProducts,
+  getColors,
+  getProductById,
+  getSizes,
+  updateProduct,
+} from "../controllers/adminProductController";
+import { validateProductId } from "../middlewares/productValidation";
 
 const router = express.Router();
 
-router.get("/categories", searchCategories);
-router.post('/', createProduct);
-router.get('/', getAllProducts);
-router.get('/:productId', getProductById);
-router.put('/:productId', updateProduct);
-router.delete('/:productId', deleteProduct);
+router.post("/", createProduct);
+router.get("/", getAllProducts);
+router.put("/:productId", validateProductId, updateProduct);
+router.delete("/:productId", validateProductId, deleteProduct);
+router.get("/check-name", checkProductName);
+router.get("/colors", getColors);
+router.get("/sizes", getSizes);
+router.get("/:productId", validateProductId, getProductById);
 
 export default router;
