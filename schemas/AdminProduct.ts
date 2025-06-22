@@ -1,4 +1,4 @@
-import { Schema, model, Document } from "mongoose";
+import mongoose, { Schema, model, Document } from "mongoose";
 import Color from "./adminProductColor";
 import Size from "./adminProductSize";
 
@@ -14,6 +14,9 @@ export interface IAdminProduct extends Document {
   consTypes: "Bought" | "Commission" | "Expected";
   allowOversold: boolean;
   comments?: string;
+  clientId: mongoose.Types.ObjectId; // Reference to Client
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const generateProductCode = async (
@@ -88,6 +91,11 @@ const AdminProductSchema = new Schema<IAdminProduct>(
     },
     allowOversold: { type: Boolean, required: true, default: false },
     comments: { type: String, required: false },
+    clientId: {
+      type: Schema.Types.ObjectId,
+      ref: "Client",
+      required: true,
+    },
   },
   { timestamps: true, versionKey: false }
 );

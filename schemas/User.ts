@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Types } from "mongoose";
 import crypto from "crypto";
 
 export interface IUser extends Document {
@@ -6,15 +6,17 @@ export interface IUser extends Document {
   firstName: string;
   lastName: string;
   email: string;
+  companyEmail: string;
   password: string;
   companyName: string;
-  companyReferenceNumber?: string; // Optional
+  companyReferenceNumber?: string;
   consentGiven?: boolean;
   roles: string[];
   teamId: mongoose.Types.ObjectId;
   status?: "pending" | "active" | "inactive";
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
+  clientId: Types.ObjectId;
   createdAt?: Date;
   updatedAt?: Date;
   createPasswordResetToken: () => string;
@@ -25,10 +27,16 @@ const userSchema: Schema<IUser> = new Schema(
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
+    companyEmail: {type: String, required: true, unique: true},
     password: { type: String, required: true },
     companyName: { type: String, required: true },
-    companyReferenceNumber: { type: String, unique: true }, // Removed required
-    consentGiven: { type: Boolean, default: false },
+    companyReferenceNumber: { type: String, required: true, unique: true },
+    clientId: {
+      type: Schema.Types.ObjectId,
+      ref: "Client",
+      required: true,
+    },
+    consentGiven: { type: Boolean, required: true, default: false },
     roles: [
       {
         type: String,
