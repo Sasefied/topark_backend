@@ -5,6 +5,8 @@ import express from "express";
 import authRoutes from "../routes/authRoutes";
 import teamRoutes from "../routes/teamRoutes";
 import adminProductRoutes from '../routes/adminProductRoutes';
+import ClientDetailsRoutes from "../routes/ClientDetailsRoutes";
+
 const router = express.Router();
 
 router.get("/", (_req, res) => {
@@ -19,7 +21,8 @@ router.get("/health", (_req, res) => {
 // Mount the modular routes
 router.use("/auth", authRoutes);
 router.use("/team", teamRoutes);
-router.use('/admin/products', adminProductRoutes)
+router.use('/admin/products', adminProductRoutes);
+router.use('/clients', ClientDetailsRoutes)
 
 
 

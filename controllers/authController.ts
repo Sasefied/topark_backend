@@ -15,8 +15,16 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
 
 // 1. Signup Controller
 export const signup = async (req: Request, res: Response): Promise<void> => {
-  const { firstName, lastName, companyName, companyReferenceNumber, email, password, consentGiven } =
-    req.body;
+  const {
+    firstName,
+    lastName,
+    companyName,
+    companyReferenceNumber,
+    email,
+    companyEmail,
+    password,
+    consentGiven,
+  } = req.body;
 
   try {
     // Validate consent
@@ -43,7 +51,9 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       );
       return;
     }
-    const existingcompanyReferenceNumber = await User.findOne({ companyReferenceNumber });
+    const existingcompanyReferenceNumber = await User.findOne({
+      companyReferenceNumber,
+    });
     if (existingcompanyReferenceNumber) {
       responseHandler(res, 400, "Comapny Reference Number already exists");
       return;
@@ -74,11 +84,12 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       firstName,
       lastName,
       companyName,
+      companyEmail,
       companyReferenceNumber,
       email,
       password: hashedPassword,
       consentGiven: !!consentGiven,
-      roles: ["Admin"]
+      roles: ["Admin"],
     });
 
     // Save user to database
@@ -91,86 +102,6 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// 2.login Controller: Controller for user login and JWT token issuance
-// export const login = async (req: Request, res: Response): Promise<void> => {
-//   const { email, password } = req.body;
-
-//   try {
-//     // Fetch user by email
-//     const userDoc = await User.findOne({ email });
-//     if (!userDoc) {
-//       responseHandler(res, 401, "Invalid credentials");
-//       return;
-//     }
-
-//     const user = userDoc.toObject() as IUser;
-
-//     // Validate password
-//     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) {
-//       responseHandler(res, 401, "Invalid credentials");
-//       return;
-//     }
-
-//     //check if user has a team
-//     let team: (typeof Team.prototype & { _id: any }) | null = await Team.findOne({createdBy: user._id});
-//     if(!team && user.roles.includes("Admin")){
-//       team = new Team({
-//         teamName: `${user.companyName} Team`,
-//         createdBy: user._id,
-//         members: [
-//           {
-//             user: user._id,
-//             email: user.email,
-//             roles: ['Admin'],
-//             status: "active"
-//           }
-//         ]
-//       });
-//       await team.save();
-//       await User.findByIdAndUpdate(user._id, { teamId: team._id}, {new: true});
-//     }
-
-
-
-//     // Create JWT payload
-//     const payload = {
-//       iss: "ToprakApp",
-//       sub: user._id.toString(),
-//       firstName: user.firstName,
-//       lastName: user.lastName,
-//       email: user.email,
-//       roles: user.roles,
-//       teamId: team ? team._id.toString() : null,
-//     };
-
-//     // Sign JWT token
-//     const token = jwt.sign(payload, JWT_SECRET, {
-//       expiresIn: JWT_EXPIRES_IN,
-//     } as SignOptions);
-
-//     // Respond with token and user details
-//     res.status(200).json({
-//       token,
-//       user: {
-//         firstName: user.firstName,
-//         lastName: user.lastName,
-//         email: user.email,
-//         roles: user.roles,
-//       },
-//       team: team
-//        ? {
-//         id: team._id,
-//         teamName: team.teamName,
-//         primaryUsage: team.primaryUsage || null,
-//       }
-//       : null
-//     });
-//   } catch (error) {
-//     console.error("Login Error:", error);
-//     responseHandler(res, 500, "Internal server error");
-//   }
-// };
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 
@@ -215,7 +146,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         ],
       });
       await team.save();
-      await User.findByIdAndUpdate(user._id, { teamId: team._id }, { new: true });
+      await User.findByIdAndUpdate(
+        user._id,
+        { teamId: team._id },
+        { new: true }
+      );
     }
 
     const payload = {
@@ -339,7 +274,6 @@ export const forgotPassword = async (
   }
 };
 
-
 // 4. Reset Password Controller: Controller to reset password using the token received in the email
 export const resetPassword = async (
   req: Request,
@@ -352,11 +286,6 @@ export const resetPassword = async (
     responseHandler(res, 400, "Token and new password are required");
     return;
   }
-
-  // if (newPassword.length < 8) {
-  //   responseHandler(res, 400, "Password must be at least 8 characters");
-  //   return;
-  // }
 
   const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
   if (!passwordStrengthRegex.test(newPassword)) {
