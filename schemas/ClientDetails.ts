@@ -1,3 +1,4 @@
+
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface IClient extends Document {
@@ -10,8 +11,14 @@ export interface IClient extends Document {
   registeredAddress: string;
   deliveryAddress: string;
   clientNotes: string;
-  createdBy: mongoose.Types.ObjectId;
   companyReferenceNumber: string;
+  createdBy: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    companyName: string;
+    companyReferenceNumber: string;
+  } | null; // Allow null if createdBy is optional
   relatedClientIds: mongoose.Types.ObjectId[];
   createdAt?: Date;
   updatedAt?: Date;
@@ -32,12 +39,12 @@ const clientSchema = new Schema<IClient>(
     registeredAddress: { type: String, default: "" },
     deliveryAddress: { type: String, default: "" },
     clientNotes: { type: String, default: "" },
+    companyReferenceNumber: { type: String, required: true },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      default: null, // Allow null if no user is associated
     },
-    companyReferenceNumber: { type: String, required: true },
     relatedClientIds: [
       {
         type: Schema.Types.ObjectId,

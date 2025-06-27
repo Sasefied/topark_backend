@@ -1,6 +1,8 @@
+
 import { Request, Response } from "express";
 import Client, { IClient } from "../schemas/ClientDetails";
 import User from "../schemas/User";
+import MyClient from "../schemas/MyClient";
 import { responseHandler } from "../utils/responseHandler";
 import sendEmail from "../utils/mail";
 import { Types } from "mongoose";
@@ -26,7 +28,7 @@ export const createClient = async (
       clientNotes,
     } = req.body;
 
-    if (!clientId || !clientName || !clientEmail || !registeredName) {
+    if (!clientId || !clientName || !clientEmail.trim() || !registeredName) {
       responseHandler(
         res,
         400,
@@ -37,7 +39,7 @@ export const createClient = async (
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(clientEmail)) {
+    if (!emailRegex.test(clientEmail.trim())) {
       responseHandler(res, 400, "Invalid client email format", "error");
       return;
     }
@@ -76,12 +78,11 @@ export const createClient = async (
 
     const user = await User.findById(createdBy);
     if (!user) {
-      console.log("createClient - User not found for createdBy:", createdBy);
       responseHandler(res, 400, "Invalid user", "error");
       return;
     }
 
-    const newClient: Partial<IClient> = {
+    const newClient = new Client({
       clientId,
       clientName,
       workanniversary: workanniversary ? new Date(workanniversary) : null,
@@ -90,12 +91,10 @@ export const createClient = async (
       registeredAddress: registeredAddress || "",
       deliveryAddress: deliveryAddress || "",
       clientNotes: clientNotes || "",
-      createdBy: new Types.ObjectId(user._id),
-      companyReferenceNumber: clientId, // Store clientId as companyReferenceNumber for consistency
-    };
+      companyReferenceNumber: clientId,
+    });
 
-    const client = new Client(newClient);
-    await client.save();
+    await newClient.save();
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -129,38 +128,120 @@ export const createClient = async (
       console.warn("createClient - Failed to send email to:", clientEmail);
     }
 
-    responseHandler(res, 201, "Client created successfully", "success", client);
+    responseHandler(res, 201, "Client created successfully", "success", newClient);
   } catch (error: any) {
+    console.error("createClient - Error:", {
+      message: error.message,
+      stack: error.stack,
+      body: req.body,
+    });
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
 
-export const getUsersForClientList = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const addClientToUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Fetch all clientIds (companyReferenceNumber) from the Client collection
-    const existingClients = await Client.find({}, { clientId: 1 });
+    const { clientId } = req.body;
+    const userId = req.userId;
 
-    // Filter users whose companyReferenceNumber is not in clientIds
-    const existingClientIds = existingClients.map((client) => client.clientId);
+    console.log("addClientToUser - userId:", userId, "clientId:", clientId);
 
-    const users = await User.find(
-      { companyReferenceNumber: { $nin: existingClientIds } },
-      {
-        _id: 1,
-        firstName: 1,
-        lastName: 1,
-        email: 1,
-        companyName: 1,
-        companyReferenceNumber: 1,
-      }
-    );
+    if (!userId || !clientId) {
+      responseHandler(res, 400, "Missing userId or clientId", "error");
+      return;
+    }
 
-    responseHandler(res, 200, "Users fetched successfully", "success", users);
+    if (!Types.ObjectId.isValid(clientId)) {
+      responseHandler(res, 400, "Invalid clientId format", "error");
+      return;
+    }
+
+    // Verify the client exists and has valid data
+    const client = await Client.findById(clientId);
+    if (!client || !client.clientName || !client.clientId) {
+      console.warn("addClientToUser - Invalid client:", client);
+      responseHandler(res, 404, "Client not found or invalid data", "error");
+      return;
+    }
+
+    // Update only the requesting user's MyClient document
+    const updatedMyClient = await MyClient.findOneAndUpdate(
+      { userId: userId.toString() },
+      { $addToSet: { clientId: new Types.ObjectId(clientId) } },
+      { upsert: true, new: true }
+    ).populate("clientId");
+
+    console.log("addClientToUser - Updated MyClient document:", {
+      userId,
+      clientIds: updatedMyClient.clientId.map((c: any) => c._id.toString()),
+    });
+
+    responseHandler(res, 200, "Client added to user successfully", "success", updatedMyClient);
   } catch (error: any) {
-    console.error("Fetch Users Error:", {
+    console.error("addClientToUser - Error:", {
+      message: error.message,
+      stack: error.stack,
+      
+    });
+    responseHandler(res, 500, "Internal server error", "error");
+  }
+};
+
+export const getClientsForUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+
+    console.log("getClientsForUser - userId:", userId);
+
+    if (!userId) {
+      responseHandler(res, 400, "Missing userId", "error");
+      return;
+    }
+
+    // Verify user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      console.warn("getClientsForUser - User not found:", userId);
+      responseHandler(res, 400, "Invalid user", "error");
+      return;
+    }
+
+    const myClientDoc = await MyClient.findOne({ userId: userId.toString() }).populate({
+      path: "clientId",
+      select: "clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
+    });
+
+    console.log("getClientsForUser - Fetched MyClient document:", {
+      userId,
+      clientIds: myClientDoc ? myClientDoc.clientId.map((c: any) => c._id.toString()) : [],
+      clients: myClientDoc ? myClientDoc.clientId : [],
+    });
+
+    if (!myClientDoc || !myClientDoc.clientId || myClientDoc.clientId.length === 0) {
+      responseHandler(res, 200, "No clients found for this user", "success", {
+        count: 0,
+        clients: [],
+      });
+      return;
+    }
+
+    // Validate populated clients
+    const clients = myClientDoc.clientId.filter((client: any) => {
+      if (!client.clientName || !client.clientId) {
+        console.warn("getClientsForUser - Invalid client data:", client);
+        return false;
+      }
+      return true;
+    }) as unknown as IClient[];
+
+    const count = clients.length;
+
+    responseHandler(res, 200, "Clients fetched successfully", "success", {
+      count,
+      clients,
+    });
+  } catch (error: any) {
+    console.error("getClientsForUser - Error:", {
       message: error.message,
       stack: error.stack,
     });
@@ -173,19 +254,49 @@ export const getAllClients = async (
   res: Response
 ): Promise<void> => {
   try {
-    const clients = await Client.find().populate(
-      "createdBy",
-      "firstName lastName companyName companyReferenceNumber"
-    );
-    responseHandler(
-      res,
-      200,
-      "Clients fetched successfully",
-      "success",
-      clients
-    );
-  } catch (error) {
-    responseHandler(res, 500, "Internal server error");
+    const userId = req.userId;
+    console.log("getAllClients - userId:", userId);
+
+    if (!userId) {
+      responseHandler(res, 400, "Missing userId", "error");
+      return;
+    }
+
+    const myClientDoc = await MyClient.findOne({ userId: userId.toString() });
+    const excludedClientIds = myClientDoc?.clientId || [];
+
+    const clients = await Client.find({
+      _id: { $nin: excludedClientIds },
+      clientEmail: { $ne: req.userEmail },
+    });
+
+    // Validate clients
+    const validClients = clients.filter((client) => {
+      if (!client.clientName || !client.clientId) {
+        console.warn("getAllClients - Invalid client data:", client);
+        return false;
+      }
+      return true;
+    });
+
+    const count = validClients.length;
+
+    console.log("getAllClients - Fetched unlinked clients:", {
+      userId,
+      clientIds: validClients.map((c) => c._id.toString()),
+    });
+
+    responseHandler(res, 200, "Clients fetched successfully", "success", {
+      count,
+      clients: validClients,
+    });
+  } catch (error: any) {
+    console.error("getAllClients - Error:", {
+      message: error.message,
+      stack: error.stack,
+      
+    });
+    responseHandler(res, 500, "Internal server error", "error");
   }
 };
 
@@ -199,8 +310,9 @@ export const getClientById = async (
       "createdBy",
       "firstName lastName companyName companyReferenceNumber"
     );
-    if (!client) {
-      responseHandler(res, 404, "Client not found");
+    if (!client || !client.clientName || !client.clientId) {
+      console.warn("getClientById - Invalid client data:", client);
+      responseHandler(res, 404, "Client not found or invalid data", "error");
       return;
     }
     responseHandler(
@@ -210,11 +322,14 @@ export const getClientById = async (
       "success",
       excludeId(client)
     );
-  } catch (error) {
-    responseHandler(res, 500, "Internal server error");
+  } catch (error: any) {
+    console.error("getClientById - Error:", {
+      message: error.message,
+      stack: error.stack,
+    });
+    responseHandler(res, 500, "Internal server error", "error");
   }
 };
-
 export const updateClient = async (
   req: Request,
   res: Response
@@ -224,37 +339,107 @@ export const updateClient = async (
     const updatedClientData: Partial<IClient> = req.body;
 
     delete updatedClientData.clientId;
-    delete updatedClientData.createdBy;
+
+    // Validate workanniversary format
+    if (updatedClientData.workanniversary) {
+      updatedClientData.workanniversary = new Date(updatedClientData.workanniversary);
+      if (isNaN(updatedClientData.workanniversary.getTime())) {
+        responseHandler(res, 400, "Invalid workanniversary date format", "error");
+        return;
+      }
+    }
 
     const client = await Client.findOneAndUpdate(
       { clientId },
       updatedClientData,
       { new: true, runValidators: true }
-    ).populate("createdBy", "firstName lastName companyName");
+    ).populate("createdBy", "firstName lastName companyName companyReferenceNumber");
 
-    if (!client) {
-      responseHandler(res, 404, "Client not found");
+    console.log("updateClient - Updated client:", { clientId, client });
+
+    if (!client || !client.clientName || !client.clientId) {
+      console.warn("updateClient - Invalid client data:", client);
+      responseHandler(res, 404, "Client not found or invalid data", "error");
       return;
     }
-    responseHandler(res, 200, "Client updated successfully", "success", client);
-  } catch (error) {
-    responseHandler(res, 500, "Internal server error");
+
+    // Construct response with createdBy fallback
+    const clientData = {
+      _id: client._id.toString(),
+      clientId: client.clientId,
+      clientName: client.clientName,
+      clientEmail: client.clientEmail,
+      registeredName: client.registeredName,
+      workanniversary: client.workanniversary ? client.workanniversary.toISOString() : null,
+      registeredAddress: client.registeredAddress,
+      deliveryAddress: client.deliveryAddress,
+      clientNotes: client.clientNotes,
+      companyReferenceNumber: client.companyReferenceNumber,
+      relatedClientIds: client.relatedClientIds.map((id) => id.toString()),
+      createdBy: client.createdBy
+        ? {
+            _id: client.createdBy._id.toString(),
+            firstName: client.createdBy.firstName || "",
+            lastName: client.createdBy.lastName || "",
+            companyName: client.createdBy.companyName || "",
+            companyReferenceNumber: client.createdBy.companyReferenceNumber || "",
+          }
+        : null,
+    };
+
+    responseHandler(res, 200, "Client updated successfully", "success", clientData);
+  } catch (error: any) {
+    console.error("updateClient - Error:", {
+      message: error.message,
+      stack: error.stack,
+      clientId: req.params.clientId,
+      updatedClientData: req.body,
+    });
+    responseHandler(res, 500, error.message || "Internal server error", "error");
   }
 };
-
-export const deleteClient = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const deleteClient = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { clientId } = req.params;
-    const client = await Client.findOneAndDelete({ clientId });
-    if (!client) {
-      responseHandler(res, 404, "Client not found");
+    const userId = req.userId;
+    const { clientId } = req.body;
+
+    console.log("deleteClient - userId:", userId, "clientId:", clientId);
+
+    if (!userId || !clientId) {
+      responseHandler(res, 400, "Missing userId or clientId", "error");
       return;
     }
-    responseHandler(res, 204, "Client deleted successfully");
-  } catch (error) {
-    responseHandler(res, 500, "Internal server error");
+
+    if (!Types.ObjectId.isValid(clientId)) {
+      responseHandler(res, 400, "Invalid clientId format", "error");
+      return;
+    }
+
+    const updateResult = await MyClient.findOneAndUpdate(
+      { userId: userId.toString() },
+      { $pull: { clientId: new Types.ObjectId(clientId) } },
+      { new: true }
+    ).populate("clientId");
+
+    if (!updateResult) {
+      responseHandler(res, 404, "User or client not found", "error");
+      return;
+    }
+
+    console.log("deleteClient - Updated MyClient document:", {
+      userId,
+      clientIds: updateResult.clientId.map((c: any) => c._id.toString()),
+    });
+
+    responseHandler(res, 200, "Client removed successfully", "success", {
+      updatedClients: updateResult.clientId,
+      count: updateResult.clientId.length,
+    });
+  } catch (error: any) {
+    console.error("deleteClient - Error:", {
+      message: error.message,
+      stack: error.stack,
+    });
+    responseHandler(res, 500, "Internal server error", "error");
   }
 };
