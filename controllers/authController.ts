@@ -15,8 +15,16 @@ const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
 
 // 1. Signup Controller
 export const signup = async (req: Request, res: Response): Promise<void> => {
-  const { firstName, lastName, companyName, companyReferenceNumber, email, password, consentGiven } =
-    req.body;
+  const {
+    firstName,
+    lastName,
+    companyName,
+    companyReferenceNumber,
+    email,
+    companyEmail,
+    password,
+    consentGiven,
+  } = req.body;
 
   try {
     // Validate consent
@@ -43,7 +51,9 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       );
       return;
     }
-    const existingcompanyReferenceNumber = await User.findOne({ companyReferenceNumber });
+    const existingcompanyReferenceNumber = await User.findOne({
+      companyReferenceNumber,
+    });
     if (existingcompanyReferenceNumber) {
       responseHandler(res, 400, "Comapny Reference Number already exists");
       return;
@@ -74,11 +84,12 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       firstName,
       lastName,
       companyName,
+      companyEmail,
       companyReferenceNumber,
       email,
       password: hashedPassword,
       consentGiven: !!consentGiven,
-      roles: ["Admin"]
+      roles: ["Admin"],
     });
 
     // Save user to database
@@ -90,120 +101,51 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     responseHandler(res, 500, "Internal server error");
   }
 };
-
-// 2.login Controller: Controller for user login and JWT token issuance
-// export const login = async (req: Request, res: Response): Promise<void> => {
-//   const { email, password } = req.body;
-
-//   try {
-//     // Fetch user by email
-//     const userDoc = await User.findOne({ email });
-//     if (!userDoc) {
-//       responseHandler(res, 401, "Invalid credentials");
-//       return;
-//     }
-
-//     const user = userDoc.toObject() as IUser;
-
-//     // Validate password
-//     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) {
-//       responseHandler(res, 401, "Invalid credentials");
-//       return;
-//     }
-
-//     //check if user has a team
-//     let team: (typeof Team.prototype & { _id: any }) | null = await Team.findOne({createdBy: user._id});
-//     if(!team && user.roles.includes("Admin")){
-//       team = new Team({
-//         teamName: `${user.companyName} Team`,
-//         createdBy: user._id,
-//         members: [
-//           {
-//             user: user._id,
-//             email: user.email,
-//             roles: ['Admin'],
-//             status: "active"
-//           }
-//         ]
-//       });
-//       await team.save();
-//       await User.findByIdAndUpdate(user._id, { teamId: team._id}, {new: true});
-//     }
-
-
-
-//     // Create JWT payload
-//     const payload = {
-//       iss: "ToprakApp",
-//       sub: user._id.toString(),
-//       firstName: user.firstName,
-//       lastName: user.lastName,
-//       email: user.email,
-//       roles: user.roles,
-//       teamId: team ? team._id.toString() : null,
-//     };
-
-//     // Sign JWT token
-//     const token = jwt.sign(payload, JWT_SECRET, {
-//       expiresIn: JWT_EXPIRES_IN,
-//     } as SignOptions);
-
-//     // Respond with token and user details
-//     res.status(200).json({
-//       token,
-//       user: {
-//         firstName: user.firstName,
-//         lastName: user.lastName,
-//         email: user.email,
-//         roles: user.roles,
-//       },
-//       team: team
-//        ? {
-//         id: team._id,
-//         teamName: team.teamName,
-//         primaryUsage: team.primaryUsage || null,
-//       }
-//       : null
-//     });
-//   } catch (error) {
-//     console.error("Login Error:", error);
-//     responseHandler(res, 500, "Internal server error");
-//   }
-// };
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 
+  console.log("login - Request:", { email });
+
   if (!email || !password) {
-    responseHandler(res, 400, "Email and password are required");
+    responseHandler(res, 400, "Email and password are required", "error");
     return;
   }
 
   // Validate email format
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
-    responseHandler(res, 400, "Invalid email format");
+    responseHandler(res, 400, "Invalid email format", "error");
     return;
   }
 
   try {
     const userDoc = await User.findOne({ email });
     if (!userDoc) {
-      responseHandler(res, 401, "Invalid credentials");
+      console.log("login - User not found for email:", email);
+      responseHandler(res, 401, "Invalid credentials", "error");
       return;
     }
 
     const user = userDoc.toObject() as IUser;
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      responseHandler(res, 401, "Invalid credentials");
+      console.log("login - Password mismatch for email:", email);
+      responseHandler(res, 401, "Invalid credentials", "error");
+      return;
+    }
+
+    // Block inactive users
+    if (user.status === "inactive") {
+      console.log("login - Inactive user:", { userId: user._id, email });
+      responseHandler(res, 403, "Account is inactive. Contact your Admin.", "error");
       return;
     }
 
     let team = await Team.findOne({ createdBy: user._id });
     if (!team && user.roles.includes("Admin")) {
+      console.log("login - Creating team for admin:", { userId: user._id, email });
       team = new Team({
-        teamName: `${user.companyName} Team`,
+        teamName: `${user.companyName || "Default"} Team`,
         createdBy: user._id,
         members: [
           {
@@ -215,7 +157,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         ],
       });
       await team.save();
-      await User.findByIdAndUpdate(user._id, { teamId: team._id }, { new: true });
+      await User.findByIdAndUpdate(
+        user._id,
+        { teamId: team._id },
+        { new: true }
+      );
+      console.log("login - Team created:", { teamId: team._id, teamName: team.teamName });
     }
 
     const payload = {
@@ -228,19 +175,31 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       teamId: team ? String(team._id) : null,
     };
 
+    const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"; // Fallback for development
+    const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+
     const token = jwt.sign(payload, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN,
     } as SignOptions);
+
+    console.log("login - Generated token for user:", {
+      userId: user._id.toString(),
+      email: user.email,
+      roles: user.roles,
+      teamId: team ? String(team._id) : null,
+    });
 
     res.status(200).json({
       status: "success",
       data: {
         token,
         user: {
+          id: user._id.toString(), // Added id for authStore
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
           roles: user.roles,
+          teamId: team ? String(team._id) : null, // Added teamId for authStore
         },
         team: team
           ? {
@@ -251,11 +210,104 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           : null,
       },
     });
-  } catch (error) {
-    console.error("Login Error:", error);
-    responseHandler(res, 500, "Internal server error");
+  } catch (error: any) {
+    console.error("login - Error:", {
+      message: error.message,
+      stack: error.stack,
+      email,
+    });
+    responseHandler(res, 500, "Internal server error", "error");
   }
 };
+// export const login = async (req: Request, res: Response): Promise<void> => {
+//   const { email, password } = req.body;
+
+//   if (!email || !password) {
+//     responseHandler(res, 400, "Email and password are required");
+//     return;
+//   }
+
+//   // Validate email format
+//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//   if (!emailRegex.test(email)) {
+//     responseHandler(res, 400, "Invalid email format");
+//     return;
+//   }
+
+//   try {
+//     const userDoc = await User.findOne({ email });
+//     if (!userDoc) {
+//       responseHandler(res, 401, "Invalid credentials");
+//       return;
+//     }
+
+//     const user = userDoc.toObject() as IUser;
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) {
+//       responseHandler(res, 401, "Invalid credentials");
+//       return;
+//     }
+
+//     let team = await Team.findOne({ createdBy: user._id });
+//     if (!team && user.roles.includes("Admin")) {
+//       team = new Team({
+//         teamName: `${user.companyName} Team`,
+//         createdBy: user._id,
+//         members: [
+//           {
+//             user: user._id,
+//             email: user.email,
+//             roles: ["Admin"],
+//             status: "active",
+//           },
+//         ],
+//       });
+//       await team.save();
+//       await User.findByIdAndUpdate(
+//         user._id,
+//         { teamId: team._id },
+//         { new: true }
+//       );
+//     }
+
+//     const payload = {
+//       iss: "ToprakApp",
+//       sub: user._id.toString(),
+//       firstName: user.firstName,
+//       lastName: user.lastName,
+//       email: user.email,
+//       roles: user.roles,
+//       teamId: team ? String(team._id) : null,
+//     };
+
+//     const token = jwt.sign(payload, JWT_SECRET, {
+//       expiresIn: JWT_EXPIRES_IN,
+//     } as SignOptions);
+
+//     res.status(200).json({
+//       status: "success",
+//       data: {
+//         token,
+//         user: {
+//           firstName: user.firstName,
+//           lastName: user.lastName,
+//           email: user.email,
+//           roles: user.roles,
+//         },
+//         team: team
+//           ? {
+//               id: team._id,
+//               teamName: team.teamName,
+//               primaryUsage: team.primaryUsage || null,
+//             }
+//           : null,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Login Error:", error);
+//     responseHandler(res, 500, "Internal server error");
+//   }
+// };
 
 // 3.Forgot Password Controller: Controller to initiate password reset process by sending an email with reset link
 export const forgotPassword = async (
@@ -339,7 +391,6 @@ export const forgotPassword = async (
   }
 };
 
-
 // 4. Reset Password Controller: Controller to reset password using the token received in the email
 export const resetPassword = async (
   req: Request,
@@ -352,11 +403,6 @@ export const resetPassword = async (
     responseHandler(res, 400, "Token and new password are required");
     return;
   }
-
-  // if (newPassword.length < 8) {
-  //   responseHandler(res, 400, "Password must be at least 8 characters");
-  //   return;
-  // }
 
   const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
   if (!passwordStrengthRegex.test(newPassword)) {

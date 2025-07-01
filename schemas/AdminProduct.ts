@@ -1,4 +1,4 @@
-import { Schema, model, Document } from "mongoose";
+import mongoose, { Schema, model, Document } from "mongoose";
 import Color from "./adminProductColor";
 import Size from "./adminProductSize";
 
@@ -14,6 +14,8 @@ export interface IAdminProduct extends Document {
   consTypes: "Bought" | "Commission" | "Expected";
   allowOversold: boolean;
   comments?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const generateProductCode = async (

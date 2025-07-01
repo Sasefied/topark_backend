@@ -22,6 +22,7 @@ export interface ITeam extends Document {
   teamName: string;
   primaryUsage?: "Only Buying" | "Buying and Selling";
   createdBy: Types.ObjectId;
+  // clientId: Types.ObjectId; // Reference to Client
   members?: ITeamMember[];
   createdAt?: Date;
   updatedAt?: Date;
@@ -53,6 +54,11 @@ const teamSchema: Schema<ITeam> = new Schema(
       enum: ["Only Buying", "Buying and Selling"],
     },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    // clientId: {
+    //   type: Schema.Types.ObjectId,
+    //   ref: "Client",
+    //   required: true,
+    // },
     members: [teamMemberSchema],
   },
   {
