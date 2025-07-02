@@ -4,8 +4,9 @@ import express from "express";
 
 import authRoutes from "../routes/authRoutes";
 import teamRoutes from "../routes/teamRoutes";
-import adminProductRoutes from '../routes/adminProductRoutes';
+import adminProductRoutes from "../routes/adminProductRoutes";
 import ClientDetailsRoutes from "../routes/ClientDetailsRoutes";
+import inventoryRoutes from "../routes/inventoryRoutes";
 
 const router = express.Router();
 
@@ -17,13 +18,11 @@ router.get("/health", (_req, res) => {
   res.status(200).json({ status: "UP" });
 });
 
-
 // Mount the modular routes
 router.use("/auth", authRoutes);
 router.use("/team", teamRoutes);
-router.use('/admin/products', adminProductRoutes);
-router.use('/clients', ClientDetailsRoutes)
-
-
+router.use("/admin/products", adminProductRoutes);
+router.use("/clients", ClientDetailsRoutes);
+router.use("/inventories", inventoryRoutes);
 
 export default router;
