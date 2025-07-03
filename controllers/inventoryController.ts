@@ -1,5 +1,5 @@
-import { RequestHandler } from "express"
-import Inventory from "../schemas/Inventory"
+import { RequestHandler } from "express";
+import Inventory from "../schemas/Inventory";
 
 /**
  * Get all inventories
@@ -9,15 +9,37 @@ import Inventory from "../schemas/Inventory"
  */
 const getAllInventories: RequestHandler = async (req, res) => {
   try {
-    const inventory = await Inventory.find()
+    const { page = 1, limit = 10 } = req.query;
 
-    res.status(200).json(inventory)
+    const inventoryAggregate = Inventory.aggregate([
+      {
+        $lookup: {
+          from: "adminproducts",
+          localField: "adminProductId",
+          foreignField: "_id",
+          as: "adminProduct",
+        },
+      },
+    ]);
+
+    const inventories = await (Inventory as any).aggregatePaginate(
+      inventoryAggregate,
+      {
+        page,
+        limit,
+        customLabels: {
+          docs: "inventories",
+          totalDocs: "totalInventories",
+        },
+      }
+    );
+    res.status(200).json(inventories);
   } catch (error: any) {
-    console.error("Error fetching products:", error.message, error.stack)
+    console.error("Error fetching inventories:", error.message, error.stack);
     res
       .status(500)
-      .json({ message: "Error fetching products", error: error.message })
+      .json({ message: "Error fetching inventories", error: error.message });
   }
-}
+};
 
-export { getAllInventories }
+export { getAllInventories };
