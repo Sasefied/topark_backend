@@ -9,6 +9,7 @@ import { setupSwaggerDocs } from "./swagger";
 import orgRoutes from "./routes/orgRoutes";
 import { jwtAuth } from "./middlewares/jwtAuth";
 import adminUserRoutes from "./routes/TeamMemberRoutes";
+import hpp from "hpp";
 
 const upload = multer();
 
@@ -17,6 +18,7 @@ const configureServer = async (app: Express): Promise<void> => {
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(hpp());
   app.use(cors());
   app.use(upload.array("files"));
 
