@@ -51,6 +51,7 @@ const getAllInventories: RequestHandler = async (req, res) => {
 const addStockOnInventory: RequestHandler = async (req, res) => {
   try {
     const {
+      userId,
       adminProductId,
       clientId,
       grade,
@@ -64,6 +65,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
     } = req.body;
 
     await Inventory.create({
+      userId,
       adminProductId,
       clientId,
       grade,
@@ -78,6 +80,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
 
     res.status(200).json({ message: "Stock added to inventory successfully" });
   } catch (error) {
+    console.error("Error adding stock to inventory:", error);
     res.status(500).json({ message: "Error adding stock to inventory" });
   }
 };

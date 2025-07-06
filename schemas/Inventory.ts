@@ -3,6 +3,7 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 // Define the IInventory interface
 export interface IInventory extends Document {
+  userId: mongoose.Schema.Types.ObjectId;
   adminProductId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
   grade: string;
@@ -18,6 +19,11 @@ export interface IInventory extends Document {
 // Define the schema
 const inventorySchema: Schema<IInventory> = new Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
     adminProductId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "AdminProduct",
