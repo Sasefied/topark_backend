@@ -7,6 +7,8 @@ import teamRoutes from "../routes/teamRoutes";
 import adminProductRoutes from "../routes/adminProductRoutes";
 import ClientDetailsRoutes from "../routes/ClientDetailsRoutes";
 import inventoryRoutes from "../routes/inventoryRoutes";
+import buyProductRoutes from "../routes/buyProductRoute";
+import authMiddleware from '../middlewares/auth';
 
 const router = express.Router();
 
@@ -24,5 +26,6 @@ router.use("/team", teamRoutes);
 router.use("/admin/products", adminProductRoutes);
 router.use("/clients", ClientDetailsRoutes);
 router.use("/inventories", inventoryRoutes);
+router.use("/buy-products", authMiddleware, buyProductRoutes);
 
 export default router;
