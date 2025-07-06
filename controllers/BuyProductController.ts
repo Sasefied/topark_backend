@@ -6,14 +6,14 @@ import { responseHandler } from "../utils/responseHandler";
 import { Types } from "mongoose";
 
 /**
- * Search buy orders by product name, product alias, or client name.
+ * Search buy products by product name, product alias, or client name.
  * 
  * @param {string} query - Search query string
  * @param {number} page - Page number for pagination
  * @param {number} limit - Number of items per page
  * @returns {Promise<void>}
  */
-const searchBuyOrders = async (req: Request, res: Response) => {
+const searchBuyProducts = async (req: Request, res: Response) => {
   try {
     const { query = "", page = 1, limit = 10 } = req.params;
     const searchRegex = new RegExp(query, "i"); // Case-insensitive regex for partial matching
@@ -145,4 +145,4 @@ const searchBuyOrders = async (req: Request, res: Response) => {
   }
 };
 
-export { searchBuyOrders };
+export { searchBuyProducts };
