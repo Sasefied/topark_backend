@@ -25,7 +25,7 @@ router.use("/auth", authRoutes);
 router.use("/team", teamRoutes);
 router.use("/admin/products", adminProductRoutes);
 router.use("/clients", ClientDetailsRoutes);
-router.use("/inventories", inventoryRoutes);
+router.use("/inventories", authMiddleware, inventoryRoutes);
 router.use("/buy-products", authMiddleware, buyProductRoutes);
 
 export default router;

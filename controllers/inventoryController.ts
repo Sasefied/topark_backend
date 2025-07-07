@@ -1,5 +1,6 @@
 import { RequestHandler } from "express";
 import Inventory from "../schemas/Inventory";
+import { Types } from "mongoose";
 
 /**
  * Get all inventories
@@ -12,6 +13,11 @@ const getAllInventories: RequestHandler = async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
 
     const inventoryAggregate = Inventory.aggregate([
+      {
+        $match: {
+          userId: { $eq: new Types.ObjectId(req.userId) },
+        },
+      },
       {
         $lookup: {
           from: "adminproducts",
