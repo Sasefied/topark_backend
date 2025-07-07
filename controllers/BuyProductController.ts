@@ -80,40 +80,40 @@ const searchBuyProducts = async (req: Request, res: Response) => {
       {
         $unwind: "$adminProductId",
       },
-      // {
-      //   $lookup: {
-      //     from: "clients",
-      //     localField: "clientId",
-      //     foreignField: "_id",
-      //     as: "clientId",
-      //   },
-      // },
-      // {
-      //   $unwind: "$clientId",
-      // },
-      // {
-      //   $project: {
-      //     "adminProductId.productName": 1,
-      //     "adminProductId.productAlias": 1,
-      //     "adminProductId.productCode": 1,
-      //     "adminProductId.size": 1,
-      //     "adminProductId.color": 1,
-      //     "clientId.clientName": 1,
-      //     "clientId.clientEmail": 1,
-      //     "clientId.registeredName": 1,
-      //     userId: 1,
-      //     grade: 1,
-      //     pricePerUnit: 1,
-      //     qtyInStock: 1,
-      //     qtyIncoming: 1,
-      //     sourceCountry: 1,
-      //     ccy: 1,
-      //     buyingPrice: 1,
-      //     tradingPrice: 1,
-      //     createdAt: 1,
-      //     updatedAt: 1,
-      //   },
-      // },
+      {
+        $lookup: {
+          from: "clients",
+          localField: "clientId",
+          foreignField: "_id",
+          as: "clientId",
+        },
+      },
+      {
+        $unwind: "$clientId",
+      },
+      {
+        $project: {
+          "adminProductId.productName": 1,
+          "adminProductId.productAlias": 1,
+          "adminProductId.productCode": 1,
+          "adminProductId.size": 1,
+          "adminProductId.color": 1,
+          "clientId.clientName": 1,
+          "clientId.clientEmail": 1,
+          "clientId.registeredName": 1,
+          userId: 1,
+          grade: 1,
+          pricePerUnit: 1,
+          qtyInStock: 1,
+          qtyIncoming: 1,
+          sourceCountry: 1,
+          ccy: 1,
+          buyingPrice: 1,
+          tradingPrice: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
     ];
 
     // If no conditions in $or, return empty result
