@@ -1,19 +1,19 @@
-import { param } from "express-validator";
+import { query } from "express-validator";
 
 const buyProductValidator = () => {
   return [
-    param("query")
+    query("query")
       .trim()
       .notEmpty()
       .withMessage("Search query is required")
       .isString()
       .withMessage("Search query must be a string"),
-    param("page")
+    query("page")
       .optional()
       .isInt({ min: 1 })
       .toInt()
       .withMessage("Page must be a positive integer"),
-    param("limit")
+    query("limit")
       .optional()
       .isInt({ min: 1, max: 100 })
       .toInt()
