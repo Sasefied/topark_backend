@@ -3,6 +3,7 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 // Define the IBuyOrder interface
 export interface IBuyOrder extends Document {
+  userId: mongoose.Schema.Types.ObjectId;
   inventoryId: mongoose.Schema.Types.ObjectId;
   quantity: number;
   price: number;
@@ -13,6 +14,11 @@ export interface IBuyOrder extends Document {
 // Define the schema
 const buyOrderSchema: Schema<IBuyOrder> = new Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
     inventoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Inventory",
@@ -45,6 +51,6 @@ const buyOrderSchema: Schema<IBuyOrder> = new Schema(
 
 buyOrderSchema.plugin(mongooseAggregatePaginate);
 
-const BuyOrder = mongoose.model<IBuyOrder>("Inventory", buyOrderSchema);
+const BuyOrder = mongoose.model<IBuyOrder>("BuyOrder", buyOrderSchema);
 
 export default BuyOrder;

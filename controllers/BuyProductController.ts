@@ -16,18 +16,20 @@ import { Types } from "mongoose";
 const searchBuyProducts = async (req: Request, res: Response) => {
   try {
     const { query = "", page = 1, limit = 10 } = req.params;
-    const searchRegex = new RegExp(query, "i"); // Case-insensitive regex for partial matching
 
     // Find matching products and clients
     const products = await AdminProduct.find({
-      $or: [{ productName: searchRegex }, { productAlias: searchRegex }],
-    }).select("_id");
+      $or: [
+        { productName: { $regex: query, $options: "i" } },
+        { productAlias: { $regex: query, $options: "i" } },
+      ],
+    }).select("_id productName productAlias");
 
     console.log("Products found:", products);
 
     const clients = await Client.find({
-      clientName: searchRegex,
-    }).select("_id");
+      clientName: { $regex: query, $options: "i" },
+    }).select("_id clientName");
 
     console.log("Clients found:", clients);
 

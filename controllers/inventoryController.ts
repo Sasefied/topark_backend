@@ -57,7 +57,6 @@ const getAllInventories: RequestHandler = async (req, res) => {
 const addStockOnInventory: RequestHandler = async (req, res) => {
   try {
     const {
-      userId,
       adminProductId,
       clientId,
       grade,
@@ -71,7 +70,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
     } = req.body;
 
     await Inventory.create({
-      userId,
+      userId: req.userId,
       adminProductId,
       clientId,
       grade,
