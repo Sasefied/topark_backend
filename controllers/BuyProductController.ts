@@ -158,7 +158,6 @@ import Client from "../schemas/ClientDetails";
 import Inventory from "../schemas/Inventory";
 import { responseHandler } from "../utils/responseHandler";
 import { Types } from "mongoose";
-import { PipelineStage } from "mongoose";
 
 /**
  * Search buy products by product name, product alias, product code, client name, or source country.
@@ -180,53 +179,70 @@ const searchBuyProducts = async (req: Request, res: Response) => {
     // Find matching products and clients
     const products = await AdminProduct.find({
       $or: [
-        { productName: { $regex: query, $options: "i" } },
-        { productAlias: { $regex: query, $options: "i" } },
+        { productName: searchRegex },
+        { productAlias: searchRegex },
+        { productCode: searchRegex },
       ],
-    }).select("_id productName productAlias");
+    }).select("_id");
 
-    console.log("Products found:", products);
+    console.log("Products found:", JSON.stringify(products, null, 2));
 
     const clients = await Client.find({
-      clientName: { $regex: query, $options: "i" },
-    }).select("_id clientName");
+      clientName: searchRegex,
+    }).select("_id");
 
-    console.log("Clients found:", clients);
+    console.log("Clients found:", JSON.stringify(clients, null, 2));
+
+    const inventories = await Inventory.find({
+      sourceCountry: searchRegex,
+    }).select("_id");
+
+    console.log("Inventories found by sourceCountry:", JSON.stringify(inventories, null, 2));
 
     // Extract IDs
     const productIds = products.map((product) => product._id);
     const clientIds = clients.map((client) => client._id);
+    const inventoryIds = inventories.map((inv) => inv._id);
 
-    // If no products or clients found, return empty result
-    if (productIds.length === 0 && clientIds.length === 0) {
-      responseHandler(
-        res,
-        200,
-        "No matching products or clients found",
-        "success",
-        []
-      );
+    // Build match conditions
+    const matchConditions: any[] = [];
+    if (productIds.length > 0) {
+      matchConditions.push({ adminProductId: { $in: productIds } });
+    }
+    if (clientIds.length > 0) {
+      matchConditions.push({ clientId: { $in: clientIds } });
+    }
+    if (inventoryIds.length > 0) {
+      matchConditions.push({ _id: { $in: inventoryIds } });
+    }
+
+    // If no matches, return empty result with consistent structure
+    if (matchConditions.length === 0) {
+      const emptyResult = {
+        buyOrders: [],
+        totalBuyOrders: 0,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: 0,
+        pagingCounter: 1,
+        hasPrevPage: false,
+        hasNextPage: false,
+        prevPage: null,
+        nextPage: null,
+      };
+      console.log("No matches found, returning:", JSON.stringify(emptyResult, null, 2));
+      responseHandler(res, 200, "No matching products or clients found", "success", emptyResult);
       return;
     }
 
-    console.log("userId", req.userId);
+    console.log("User ID:", req.userId);
 
     const pipeline = [
-      // Match inventory items that do NOT belong to the authenticated user
       {
         $match: {
           $and: [
-            {
-              $or: [
-                ...(productIds.length > 0
-                  ? [{ adminProductId: { $in: productIds } }]
-                  : []),
-                ...(clientIds.length > 0
-                  ? [{ clientId: { $in: clientIds } }]
-                  : []),
-              ],
-            },
-            { userId: { $ne: new Types.ObjectId(req.userId) } }, // Exclude inventory where userId matches logged-in user
+            { $or: matchConditions },
+            req.userId ? { userId: { $ne: new Types.ObjectId(req.userId) } } : {},
           ],
         },
       },
@@ -235,11 +251,11 @@ const searchBuyProducts = async (req: Request, res: Response) => {
           from: "adminproducts",
           localField: "adminProductId",
           foreignField: "_id",
-          as: "product",
+          as: "adminProductId",
         },
       },
       {
-        $unwind: "$adminProductId",
+        $unwind: { path: "$adminProductId", preserveNullAndEmptyArrays: true },
       },
       {
         $lookup: {
@@ -250,15 +266,17 @@ const searchBuyProducts = async (req: Request, res: Response) => {
         },
       },
       {
-        $unwind: "$clientId",
+        $unwind: { path: "$clientId", preserveNullAndEmptyArrays: true },
       },
       {
         $project: {
+          _id: 1,
           "adminProductId.productName": 1,
           "adminProductId.productAlias": 1,
           "adminProductId.productCode": 1,
           "adminProductId.size": 1,
           "adminProductId.color": 1,
+          "clientId._id": 1,
           "clientId.clientName": 1,
           "clientId.clientEmail": 1,
           "clientId.registeredName": 1,
@@ -277,29 +295,14 @@ const searchBuyProducts = async (req: Request, res: Response) => {
       },
     ];
 
-    // If no conditions in $or, return empty result
-    if (pipeline[0].$match?.$and?.[0]?.$or?.length === 0) {
-      responseHandler(
-        res,
-        200,
-        "No matching products or clients found",
-        "success",
-        []
-      );
-      return;
-    }
-
-    const result = await (Inventory as any).aggregatePaginate(
-      Inventory.aggregate(pipeline),
-      {
-        page,
-        limit,
-        customLabels: {
-          docs: "buyOrders",
-          totalDocs: "totalBuyOrders",
-        },
-      }
-    );
+    const result = await (Inventory as any).aggregatePaginate(Inventory.aggregate(pipeline), {
+      page: pageNum,
+      limit: limitNum,
+      customLabels: {
+        docs: "buyOrders",
+        totalDocs: "totalBuyOrders",
+      },
+    });
 
     console.log("Search Result:", JSON.stringify(result, null, 2));
     responseHandler(res, 200, "Buy orders found", "success", result);
@@ -310,5 +313,3 @@ const searchBuyProducts = async (req: Request, res: Response) => {
 };
 
 export { searchBuyProducts };
-
-

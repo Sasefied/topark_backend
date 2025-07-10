@@ -1,9 +1,13 @@
 import { Request, Response } from "express";
-import BuyOrder from "../schemas/BuyOrder";
 import Inventory from "../schemas/Inventory";
 import { responseHandler } from "../utils/responseHandler";
 import { Types } from "mongoose";
 import mongoose from "mongoose";
+import { v4 as uuidv4 } from "uuid";
+import Order from "../schemas/Order";
+import OrderItem from "../schemas/OrderItem";
+import Cart from "../schemas/cart";
+import CartItem from "../schemas/CartItem";
 
 interface AuthRequest extends Request {
   userId?: string;
@@ -22,30 +26,39 @@ const createBuyOrder = async (req: AuthRequest, res: Response): Promise<void> =>
       return responseHandler(res, 401, `Unauthorized: Invalid userId: ${req.userId}`, "error");
     }
 
-    const { inventoryId, quantity, price, deliveryDate, orderStatus, productName, supplierName, size, color, ccy } = req.body;
+    const { inventoryId, quantity, price, deliveryDate } = req.body;
 
-    // Validate inventoryId exists
-    const inventory = await Inventory.findById(inventoryId);
-    if (!inventory) {
-      throw new Error(`Inventory with ID ${inventoryId} not found`);
+    if (!inventoryId || !Types.ObjectId.isValid(inventoryId)) {
+      return responseHandler(res, 400, `Invalid inventoryId: ${inventoryId}`, "error");
+    }
+    if (isNaN(quantity) || quantity <= 0) {
+      return responseHandler(res, 400, "Quantity must be a positive number", "error");
+    }
+    if (isNaN(price) || price < 0) {
+      return responseHandler(res, 400, "Price cannot be negative", "error");
+    }
+    if (!isValidDate(deliveryDate)) {
+      return responseHandler(res, 400, "Invalid delivery date", "error");
     }
 
-    const buyOrder = await BuyOrder.create({
-      userId: new Types.ObjectId(req.userId),
-      inventoryId: new Types.ObjectId(inventoryId),
-      quantity,
-      price,
-      deliveryDate: new Date(deliveryDate),
-      orderStatus: orderStatus || "Requested",
-      productName,
-      supplierName,
-      size,
-      color,
-      ccy,
-    });
+    const inventory = await Inventory.findById(inventoryId);
+    if (!inventory) {
+      return responseHandler(res, 404, `Inventory with ID ${inventoryId} not found`, "error");
+    }
 
-    console.log("Created buy order:", JSON.stringify(buyOrder, null, 2));
-    responseHandler(res, 201, "Buy order created successfully", "success", buyOrder);
+    const cart = await Cart.findOneAndUpdate(
+      { userId: req.userId },
+      { $setOnInsert: { userId: req.userId } },
+      { upsert: true, new: true }
+    );
+
+    const cartItem = await CartItem.findOneAndUpdate(
+      { cartId: cart._id, inventoryId },
+      { $setOnInsert: { cartId: cart._id, inventoryId, quantity, price, deliveryDate } },
+      { new: true, upsert: true }
+    );
+
+    responseHandler(res, 201, "Buy order created successfully", "success", cartItem);
   } catch (error: any) {
     console.error("Error creating buy order:", {
       message: error.message,
@@ -57,100 +70,230 @@ const createBuyOrder = async (req: AuthRequest, res: Response): Promise<void> =>
   }
 };
 
+const isValidDate = (date: string): boolean => {
+  const parsedDate = new Date(date);
+  return parsedDate instanceof Date && !isNaN(parsedDate.getTime());
+};
 /**
- * Creates multiple buy orders in bulk.
+ * Creates bulk buy orders for the authenticated user.
  *
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @returns {Promise<void>}
+ * @param {AuthRequest} req - Express request object containing userId and an array of orders in the body.
+ * @param {Response} res - Express response object.
+ * @returns {Promise<void>} - A promise that resolves when the operation is complete.
  */
+
+// const createBulkBuyOrders = async (
+//   req: AuthRequest,
+//   res: Response
+// ): Promise<void> => {
+//   const { orders } = req.body;
+//   console.log(req.body);
+//   const userId = req.userId;
+
+//   if (!Array.isArray(orders) || orders.length === 0) {
+//     return responseHandler(res, 400, "Orders array is required", "error");
+//   }
+
+//   // Validate clientId for the first order
+//   if (!orders[0].clientId || !mongoose.Types.ObjectId.isValid(orders[0].clientId)) {
+//     return responseHandler(res, 400, "Valid clientId is required for the order", "error");
+//   }
+
+//   const session = await mongoose.startSession();
+
+//   try {
+//     session.startTransaction();
+
+//     const invoiceNumber = uuidv4();
+
+//     const totalAmount = orders.reduce((sum, item) => sum + item.total, 0);
+
+//     const createdOrder = await Order.create(
+//       [
+//         {
+//           userId,
+//           clientId: orders[0].clientId,
+//           invoiceNumber,
+//           total: totalAmount,
+//         },
+//       ],
+//       {
+//         session,
+//       }
+//     );
+
+//     const orderItems = orders.map((item) => ({
+//       orderId: createdOrder[0]._id,
+//       inventoryId: item.inventoryId,
+//       quantity: item.quantity,
+//       price: item.price,
+//       deliveryDate: item.deliveryDate,
+//     }));
+
+//     await OrderItem.insertMany(orderItems, { session });
+
+//     const userCart = await Cart.findOne({ userId }).select("_id");
+
+//     if (userCart) {
+//       await CartItem.deleteMany({ cartId: userCart._id });
+//     }
+//     await Cart.deleteOne({ userId }, { session });
+
+//     await session.commitTransaction();
+
+//     responseHandler(
+//       res,
+//       201,
+//       "Orders created successfully",
+//       "success",
+//       createdOrder
+//     );
+//   } catch (error: any) {
+//     await session.abortTransaction();
+//     console.error("Error creating bulk buy orders:", {
+//       message: error.message,
+//       stack: error.stack,
+//       orders: req.body,
+//       userId: req.userId,
+//     });
+//     responseHandler(
+//       res,
+//       500,
+//       error.message || "Internal server error",
+//       "error"
+//     );
+//   } finally {
+//     session.endSession();
+//   }
+// };
+
+
+
+
+
 const createBulkBuyOrders = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    if (mongoose.connection.readyState !== 1) {
-      throw new Error("MongoDB connection not established");
+    const { orders } = req.body;
+    const userId = req.userId;
+
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      return responseHandler(res, 401, "Unauthorized: Invalid user ID", "error");
     }
 
-    const orders = req.body;
     if (!Array.isArray(orders) || orders.length === 0) {
-      return responseHandler(res, 400, "Orders array is empty or invalid", "error");
+      return responseHandler(res, 400, "Orders array is required and cannot be empty", "error");
     }
 
-    if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
-      return responseHandler(res, 401, `Unauthorized: Invalid userId: ${req.userId}`, "error");
-    }
+    const session = await Order.startSession();
+    session.startTransaction();
 
-    console.log("Received orders:", JSON.stringify(orders, null, 2));
+    try {
+      const createdOrders = [];
+      for (const order of orders) {
+        const {
+          productName,
+          supplierName,
+          size,
+          color,
+          quantity,
+          price,
+          ccy,
+          deliveryDate,
+          inventoryId,
+          productId,
+          clientId,
+          orderStatus,
+        } = order;
 
-    // Validate each order
-    const buyOrders = await Promise.all(
-      orders.map(async (order: any, index: number) => {
         // Validate required fields
-        if (!order.inventoryId || !Types.ObjectId.isValid(order.inventoryId)) {
-          throw new Error(`Invalid or missing inventoryId at index ${index}: ${order.inventoryId}`);
+        if (!productName || !supplierName || !inventoryId || !productId || !quantity || !price) {
+          await session.abortTransaction();
+          return responseHandler(res, 400, "Missing required order fields", "error");
         }
-        if (!order.quantity || typeof order.quantity !== "number" || order.quantity <= 0) {
-          throw new Error(`Invalid or missing quantity at index ${index}: ${order.quantity}`);
+        if (quantity <= 0) {
+          await session.abortTransaction();
+          return responseHandler(res, 400, "Quantity must be greater than 0", "error");
         }
-        if (!order.price || typeof order.price !== "number" || order.price < 0) {
-          throw new Error(`Invalid or missing price at index ${index}: ${order.price}`);
+        if (price < 0) {
+          await session.abortTransaction();
+          return responseHandler(res, 400, "Price cannot be negative", "error");
         }
-        if (!order.deliveryDate || isNaN(new Date(order.deliveryDate).getTime())) {
-          throw new Error(`Invalid or missing deliveryDate at index ${index}: ${order.deliveryDate}`);
+        if (deliveryDate && isNaN(new Date(deliveryDate).getTime())) {
+          await session.abortTransaction();
+          return responseHandler(res, 400, `Invalid delivery date: ${deliveryDate}`, "error");
         }
-        if (!order.productName || typeof order.productName !== "string" || order.productName.trim() === "") {
-          throw new Error(`Invalid or missing productName at index ${index}: ${order.productName}`);
+        if (!Types.ObjectId.isValid(inventoryId) || !Types.ObjectId.isValid(productId)) {
+          await session.abortTransaction();
+          return responseHandler(res, 400, "Invalid inventoryId or productId", "error");
         }
-        if (!order.supplierName || typeof order.supplierName !== "string" || order.supplierName.trim() === "") {
-          throw new Error(`Invalid or missing supplierName at index ${index}: ${order.supplierName}`);
-        }
-        if (!order.size || typeof order.size !== "string" || order.size.trim() === "") {
-          throw new Error(`Invalid or missing size at index ${index}: ${order.size}`);
-        }
-        if (!order.color || typeof order.color !== "string" || order.color.trim() === "") {
-          throw new Error(`Invalid or missing color at index ${index}: ${order.color}`);
-        }
-        if (!order.ccy || typeof order.ccy !== "string" || order.ccy.trim() === "") {
-          throw new Error(`Invalid or missing ccy at index ${index}: ${order.ccy}`);
+        if (clientId && !Types.ObjectId.isValid(clientId)) {
+          await session.abortTransaction();
+          return responseHandler(res, 400, `Invalid clientId: ${clientId}`, "error");
         }
 
-        // Validate inventoryId exists
-        const inventory = await Inventory.findById(order.inventoryId);
-        if (!inventory) {
-          throw new Error(`Inventory with ID ${order.inventoryId} not found at index ${index}`);
-        }
+        const newOrder = new Order({
+          userId: new Types.ObjectId(userId),
+          clientId: clientId ? new Types.ObjectId(clientId) : null,
+          total: quantity * price,
+          orderStatus: orderStatus || "Requested",
+          invoiceNumber: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        });
 
-        return {
-          userId: new Types.ObjectId(req.userId),
-          inventoryId: new Types.ObjectId(order.inventoryId),
-          quantity: order.quantity,
-          price: order.price,
-          deliveryDate: new Date(order.deliveryDate),
-          orderStatus: "Requested",
-          productName: order.productName,
-          supplierName: order.supplierName,
-          size: order.size,
-          color: order.color,
-          ccy: order.ccy,
-        };
-      })
-    );
+        const savedOrder = await newOrder.save({ session });
 
-    console.log("Validated buy orders:", JSON.stringify(buyOrders, null, 2));
+        const newOrderItem = new OrderItem({
+          orderId: savedOrder._id,
+          inventoryId: new Types.ObjectId(inventoryId),
+          quantity,
+          price,
+          deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
+          productName,
+          supplierName,
+          size,
+          color,
+          ccy: ccy || "USD",
+          productId: new Types.ObjectId(productId),
+        });
 
-    // Insert validated orders
-    const createdOrders = await BuyOrder.insertMany(buyOrders, { ordered: false });
-    console.log("Created orders:", JSON.stringify(createdOrders, null, 2));
-    responseHandler(res, 201, "Buy orders created successfully", "success", createdOrders);
+        await newOrderItem.save({ session });
+
+        createdOrders.push({
+          _id: savedOrder._id,
+          productName,
+          supplierName,
+          size,
+          color,
+          quantity,
+          price,
+          ccy: ccy || "USD",
+          deliveryDate: newOrderItem.deliveryDate,
+          inventoryId,
+          productId,
+          clientId: clientId || "",
+          orderStatus: savedOrder.orderStatus,
+          total: savedOrder.total,
+        });
+      }
+
+      await session.commitTransaction();
+      responseHandler(res, 201, "Orders created successfully", "success", createdOrders);
+    } catch (error: any) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   } catch (error: any) {
     console.error("Error creating bulk buy orders:", {
       message: error.message,
       stack: error.stack,
-      orders: req.body,
+      body: req.body,
       userId: req.userId,
     });
     responseHandler(res, 500, error.message || "Internal server error", "error");
   }
 };
+
 
 /**
  * Retrieves all buy orders visible to the authenticated user or client.
@@ -159,13 +302,21 @@ const createBulkBuyOrders = async (req: AuthRequest, res: Response): Promise<voi
  * @param {Response} res - Express response object
  * @returns {Promise<void>}
  */
-const getAllBuyOrders = async (req: AuthRequest, res: Response): Promise<void> => {
+const getAllBuyOrders = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
-      return responseHandler(res, 401, `Unauthorized: Invalid userId: ${req.userId}`, "error");
+      return responseHandler(
+        res,
+        401,
+        `Unauthorized: Invalid userId: ${req.userId}`,
+        "error"
+      );
     }
 
-    const result = await BuyOrder.aggregate([
+    const result = await Order.aggregate([
       {
         $match: {
           $or: [
@@ -199,14 +350,20 @@ const getAllBuyOrders = async (req: AuthRequest, res: Response): Promise<void> =
       {
         $project: {
           id: "$_id",
-          productName: { $ifNull: ["$productName", "$adminProductId.productName", "-"] },
-          supplierName: { $ifNull: ["$supplierName", "$clientId.clientName", "-"] },
+          productName: {
+            $ifNull: ["$productName", "$adminProductId.productName", "-"],
+          },
+          supplierName: {
+            $ifNull: ["$supplierName", "$clientId.clientName", "-"],
+          },
           size: { $ifNull: ["$size", "$adminProductId.size", "-"] },
           color: { $ifNull: ["$color", "$adminProductId.color", "-"] },
           quantity: { $ifNull: ["$quantity", 0] },
           price: { $ifNull: ["$price", 0] },
           ccy: { $ifNull: ["$ccy", "USD"] },
-          deliveryDate: { $ifNull: ["$deliveryDate", new Date().toISOString()] },
+          deliveryDate: {
+            $ifNull: ["$deliveryDate", new Date().toISOString()],
+          },
           inventoryId: { $ifNull: ["$inventoryId", ""] },
           orderStatus: { $ifNull: ["$orderStatus", "Requested"] },
           orderValue: {
@@ -218,21 +375,31 @@ const getAllBuyOrders = async (req: AuthRequest, res: Response): Promise<void> =
           },
           totalItems: { $ifNull: ["$quantity", 0] },
           expectedDate: {
-            $dateToString: { format: "%Y-%m-%d", date: { $ifNull: ["$deliveryDate", new Date()] } },
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: { $ifNull: ["$deliveryDate", new Date()] },
+            },
           },
         },
       },
     ]);
 
     console.log("Fetched buy orders:", JSON.stringify(result, null, 2));
-    responseHandler(res, 200, "Buy orders fetched successfully", "success", { buyOrders: result });
+    responseHandler(res, 200, "Buy orders fetched successfully", "success", {
+      buyOrders: result,
+    });
   } catch (error: any) {
     console.error("Error fetching buy orders:", {
       message: error.message,
       stack: error.stack,
       userId: req.userId,
     });
-    responseHandler(res, 500, error.message || "Failed to fetch buy orders", "error");
+    responseHandler(
+      res,
+      500,
+      error.message || "Failed to fetch buy orders",
+      "error"
+    );
   }
 };
 /**
@@ -242,19 +409,20 @@ const getAllBuyOrders = async (req: AuthRequest, res: Response): Promise<void> =
  * @param {Response} res - Express response object
  * @returns {Promise<void>}
  */
-const deleteBuyOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+const deleteBuyOrder = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
-    const { buyOrderId } = req.params;
-    if (!Types.ObjectId.isValid(buyOrderId)) {
-      return responseHandler(res, 400, `Invalid buyOrderId: ${buyOrderId}`, "error");
+    const { id } = req.params;
+
+    const cart = await Cart.findOne({ userId: req.userId });
+    if (!cart) {
+      return responseHandler(res, 404, "Cart not found", "error");
     }
-    const buyOrder = await BuyOrder.findOneAndDelete({
-      _id: new Types.ObjectId(buyOrderId),
-      userId: new Types.ObjectId(req.userId),
-    });
-    if (!buyOrder) {
-      return responseHandler(res, 404, "Buy order not found or not authorized", "error");
-    }
+
+    await CartItem.deleteOne({ cartId: cart._id, buyOrderId: id });
+
     responseHandler(res, 200, "Buy order deleted successfully", "success");
   } catch (error: any) {
     console.error("Error deleting buy order:", {
@@ -263,10 +431,14 @@ const deleteBuyOrder = async (req: AuthRequest, res: Response): Promise<void> =>
       buyOrderId: req.params.buyOrderId,
       userId: req.userId,
     });
-    responseHandler(res, 500, error.message || "Internal server error", "error");
+    responseHandler(
+      res,
+      500,
+      error.message || "Internal server error",
+      "error"
+    );
   }
 };
-
 
 /**
  * Updates a buy order's status, quantity, and delivery date.
@@ -275,32 +447,63 @@ const deleteBuyOrder = async (req: AuthRequest, res: Response): Promise<void> =>
  * @param {Response} res - Express response object
  * @returns {Promise<void>}
  */
-const updateBuyOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+const updateBuyOrder = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const { buyOrderId } = req.params;
-    const { orderStatus, quantity, deliveryDate } = req.body;
+    const { orderStatus, quantity, deliveryDate,price} = req.body;
 
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
-      return responseHandler(res, 401, `Unauthorized: Invalid userId: ${req.userId}`, "error");
+      return responseHandler(
+        res,
+        401,
+        `Unauthorized: Invalid userId: ${req.userId}`,
+        "error"
+      );
     }
 
     if (!Types.ObjectId.isValid(buyOrderId)) {
-      return responseHandler(res, 400, `Invalid buyOrderId: ${buyOrderId}`, "error");
+      return responseHandler(
+        res,
+        400,
+        `Invalid buyOrderId: ${buyOrderId}`,
+        "error"
+      );
     }
 
     // Validate input fields
     if (orderStatus && typeof orderStatus !== "string") {
-      return responseHandler(res, 400, `Invalid orderStatus: ${orderStatus}`, "error");
+      return responseHandler(
+        res,
+        400,
+        `Invalid orderStatus: ${orderStatus}`,
+        "error"
+      );
     }
-    if (quantity !== undefined && (typeof quantity !== "number" || quantity <= 0)) {
-      return responseHandler(res, 400, `Invalid quantity: ${quantity}`, "error");
+    if (
+      quantity !== undefined &&
+      (typeof quantity !== "number" || quantity <= 0)
+    ) {
+      return responseHandler(
+        res,
+        400,
+        `Invalid quantity: ${quantity}`,
+        "error"
+      );
     }
     if (deliveryDate && isNaN(new Date(deliveryDate).getTime())) {
-      return responseHandler(res, 400, `Invalid deliveryDate: ${deliveryDate}`, "error");
+      return responseHandler(
+        res,
+        400,
+        `Invalid deliveryDate: ${deliveryDate}`,
+        "error"
+      );
     }
 
     // Find the buy order and ensure the user is authorized (either userId or clientId matches)
-    const buyOrder = await BuyOrder.findOne({
+    const buyOrder = await Order.findOne({
       _id: new Types.ObjectId(buyOrderId),
       $or: [
         { userId: new Types.ObjectId(req.userId) },
@@ -309,19 +512,35 @@ const updateBuyOrder = async (req: AuthRequest, res: Response): Promise<void> =>
     });
 
     if (!buyOrder) {
-      return responseHandler(res, 404, "Buy order not found or not authorized", "error");
+      return responseHandler(
+        res,
+        404,
+        "Buy order not found or not authorized",
+        "error"
+      );
     }
 
-    // Update fields if provided
-    if (orderStatus) buyOrder.orderStatus = orderStatus;
-    if (quantity !== undefined) buyOrder.quantity = quantity;
-    if (deliveryDate) buyOrder.deliveryDate = new Date(deliveryDate);
+    await Order.findOneAndUpdate(
+      { _id: new Types.ObjectId(buyOrderId) },
+      {
+        $set: {
+          orderStatus,
+        },
+      }
+    );
 
-    // Save the updated buy order
-    const updatedBuyOrder = await buyOrder.save();
+    await OrderItem.findOneAndUpdate(
+      { orderId: new Types.ObjectId(buyOrderId) },
+      {
+        $set: {
+          quantity,
+          deliveryDate,
+          price
+        },
+      }
+    );
 
-    console.log("Updated buy order:", JSON.stringify(updatedBuyOrder, null, 2));
-    responseHandler(res, 200, "Buy order updated successfully", "success", updatedBuyOrder);
+    responseHandler(res, 200, "Buy order updated successfully", "success");
   } catch (error: any) {
     console.error("Error updating buy order:", {
       message: error.message,
@@ -330,8 +549,22 @@ const updateBuyOrder = async (req: AuthRequest, res: Response): Promise<void> =>
       userId: req.userId,
       body: req.body,
     });
-    responseHandler(res, 500, error.message || "Internal server error", "error");
+    responseHandler(
+      res,
+      500,
+      error.message || "Internal server error",
+      "error"
+    );
   }
 };
 
-export { createBuyOrder, createBulkBuyOrders, getAllBuyOrders, deleteBuyOrder, updateBuyOrder };
+
+
+export {
+  createBuyOrder,
+  createBulkBuyOrders,
+  getAllBuyOrders,
+  deleteBuyOrder,
+  updateBuyOrder,
+  
+};

@@ -15,5 +15,6 @@ router
   .get("/", getAllBuyOrders)
   .delete("/:id", deleteBuyOrder)
   .put("/:id", updateBuyOrder);
+  
 
 export default router;
