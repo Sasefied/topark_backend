@@ -39,7 +39,7 @@ const clientSchema = new Schema<IClient>(
     registeredAddress: { type: String, default: "" },
     deliveryAddress: { type: String, default: "" },
     clientNotes: { type: String, default: "" },
-    companyReferenceNumber: { type: String, required: true },
+    companyReferenceNumber: { type: String }, // , required: true
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",

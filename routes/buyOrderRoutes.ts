@@ -1,15 +1,19 @@
 import { Router } from "express";
 import {
   createBuyOrder,
-  deleteBuyOrder,
+  createBulkBuyOrders,
   getAllBuyOrders,
+  deleteBuyOrder,
+  updateBuyOrder,
 } from "../controllers/BuyOrderController";
 
 const router = Router();
 
 router
   .post("/", createBuyOrder)
+  .post("/bulk", createBulkBuyOrders)
   .get("/", getAllBuyOrders)
-  .delete("/:id", deleteBuyOrder);
+  .delete("/:id", deleteBuyOrder)
+  .put("/:id", updateBuyOrder);
 
 export default router;
