@@ -47,7 +47,6 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 export interface IOrderItem extends Document {
   orderId: mongoose.Schema.Types.ObjectId;
   inventoryId: mongoose.Schema.Types.ObjectId;
-  clientId: mongoose.Schema.Types.ObjectId;
   quantity: number;
   price: number;
   deliveryDate: Date;
@@ -69,11 +68,7 @@ const orderItemSchema: Schema<IOrderItem> = new Schema(
       ref: "Inventory",
       required: true,
     },
-    clientId:{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "clients",
-      required: true,
-    },
+    
     quantity: {
       type: Number,
       required: true,

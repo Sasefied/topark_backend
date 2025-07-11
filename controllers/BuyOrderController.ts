@@ -113,6 +113,7 @@ const createBulkBuyOrders = async (req: AuthRequest, res: Response): Promise<voi
           clientId,
           orderStatus,
         } = order;
+        console.log("Order", order)
 
         // Validate required fields
         if (!productName || !supplierName || !inventoryId || !productId || !quantity || !price) {
@@ -163,7 +164,7 @@ const createBulkBuyOrders = async (req: AuthRequest, res: Response): Promise<voi
           ccy: ccy || "USD",
           productId: new Types.ObjectId(productId),
         });
-
+console.log("new order", newOrderItem)
         await newOrderItem.save({ session });
 
         createdOrders.push({
