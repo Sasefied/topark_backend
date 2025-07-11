@@ -5,6 +5,7 @@ import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import User, { IUser } from "../schemas/User";
 import config from "../config";
 import { responseHandler } from "../utils/responseHandler";
+import Client from "../schemas/ClientDetails";
 import crypto from "crypto";
 import sendEmail from "../utils/mail";
 import Team from "../schemas/Team";
@@ -79,6 +80,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+
     // Create new user
     const user = new User({
       firstName,
@@ -95,12 +97,23 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     // Save user to database
     await user.save();
 
+    const newClient = new Client({
+  clientId: companyReferenceNumber,
+  clientName: `${firstName} ${lastName}`.trim(),
+  registeredName: companyName,
+  clientEmail: email,
+});
+
+await newClient.save();
+
+
     responseHandler(res, 201, "User registered successfully");
   } catch (error) {
     console.error("Signup Error:", error);
     responseHandler(res, 500, "Internal server error");
   }
 };
+
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 

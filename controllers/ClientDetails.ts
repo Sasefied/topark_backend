@@ -1,4 +1,3 @@
-
 import { Request, Response } from "express";
 import Client, { IClient } from "../schemas/ClientDetails";
 import User from "../schemas/User";
@@ -128,7 +127,13 @@ export const createClient = async (
       console.warn("createClient - Failed to send email to:", clientEmail);
     }
 
-    responseHandler(res, 201, "Client created successfully", "success", newClient);
+    responseHandler(
+      res,
+      201,
+      "Client created successfully",
+      "success",
+      newClient
+    );
   } catch (error: any) {
     console.error("createClient - Error:", {
       message: error.message,
@@ -139,12 +144,13 @@ export const createClient = async (
   }
 };
 
-export const addClientToUser = async (req: Request, res: Response): Promise<void> => {
+export const addClientToUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { clientId } = req.body;
     const userId = req.userId;
-
-    console.log("addClientToUser - userId:", userId, "clientId:", clientId);
 
     if (!userId || !clientId) {
       responseHandler(res, 400, "Missing userId or clientId", "error");
@@ -159,7 +165,6 @@ export const addClientToUser = async (req: Request, res: Response): Promise<void
     // Verify the client exists and has valid data
     const client = await Client.findById(clientId);
     if (!client || !client.clientName || !client.clientId) {
-      console.warn("addClientToUser - Invalid client:", client);
       responseHandler(res, 404, "Client not found or invalid data", "error");
       return;
     }
@@ -171,23 +176,26 @@ export const addClientToUser = async (req: Request, res: Response): Promise<void
       { upsert: true, new: true }
     ).populate("clientId");
 
-    console.log("addClientToUser - Updated MyClient document:", {
-      userId,
-      clientIds: updatedMyClient.clientId.map((c: any) => c._id.toString()),
-    });
-
-    responseHandler(res, 200, "Client added to user successfully", "success", updatedMyClient);
+    responseHandler(
+      res,
+      200,
+      "Client added to user successfully",
+      "success",
+      updatedMyClient
+    );
   } catch (error: any) {
     console.error("addClientToUser - Error:", {
       message: error.message,
       stack: error.stack,
-      
     });
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
 
-export const getClientsForUser = async (req: Request, res: Response): Promise<void> => {
+export const getClientsForUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.userId;
 
@@ -206,18 +214,19 @@ export const getClientsForUser = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const myClientDoc = await MyClient.findOne({ userId: userId.toString() }).populate({
+    const myClientDoc = await MyClient.findOne({
+      userId: userId.toString(),
+    }).populate({
       path: "clientId",
-      select: "clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
+      select:
+        "clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
     });
 
-    console.log("getClientsForUser - Fetched MyClient document:", {
-      userId,
-      clientIds: myClientDoc ? myClientDoc.clientId.map((c: any) => c._id.toString()) : [],
-      clients: myClientDoc ? myClientDoc.clientId : [],
-    });
-
-    if (!myClientDoc || !myClientDoc.clientId || myClientDoc.clientId.length === 0) {
+    if (
+      !myClientDoc ||
+      !myClientDoc.clientId ||
+      myClientDoc.clientId.length === 0
+    ) {
       responseHandler(res, 200, "No clients found for this user", "success", {
         count: 0,
         clients: [],
@@ -241,10 +250,6 @@ export const getClientsForUser = async (req: Request, res: Response): Promise<vo
       clients,
     });
   } catch (error: any) {
-    console.error("getClientsForUser - Error:", {
-      message: error.message,
-      stack: error.stack,
-    });
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
@@ -255,7 +260,6 @@ export const getAllClients = async (
 ): Promise<void> => {
   try {
     const userId = req.userId;
-    console.log("getAllClients - userId:", userId);
 
     if (!userId) {
       responseHandler(res, 400, "Missing userId", "error");
@@ -281,21 +285,11 @@ export const getAllClients = async (
 
     const count = validClients.length;
 
-    console.log("getAllClients - Fetched unlinked clients:", {
-      userId,
-      clientIds: validClients.map((c) => c._id.toString()),
-    });
-
     responseHandler(res, 200, "Clients fetched successfully", "success", {
       count,
       clients: validClients,
     });
   } catch (error: any) {
-    console.error("getAllClients - Error:", {
-      message: error.message,
-      stack: error.stack,
-      
-    });
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
@@ -323,10 +317,6 @@ export const getClientById = async (
       excludeId(client)
     );
   } catch (error: any) {
-    console.error("getClientById - Error:", {
-      message: error.message,
-      stack: error.stack,
-    });
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
@@ -342,9 +332,16 @@ export const updateClient = async (
 
     // Validate workanniversary format
     if (updatedClientData.workanniversary) {
-      updatedClientData.workanniversary = new Date(updatedClientData.workanniversary);
+      updatedClientData.workanniversary = new Date(
+        updatedClientData.workanniversary
+      );
       if (isNaN(updatedClientData.workanniversary.getTime())) {
-        responseHandler(res, 400, "Invalid workanniversary date format", "error");
+        responseHandler(
+          res,
+          400,
+          "Invalid workanniversary date format",
+          "error"
+        );
         return;
       }
     }
@@ -353,7 +350,10 @@ export const updateClient = async (
       { clientId },
       updatedClientData,
       { new: true, runValidators: true }
-    ).populate("createdBy", "firstName lastName companyName companyReferenceNumber");
+    ).populate(
+      "createdBy",
+      "firstName lastName companyName companyReferenceNumber"
+    );
 
     console.log("updateClient - Updated client:", { clientId, client });
 
@@ -370,7 +370,9 @@ export const updateClient = async (
       clientName: client.clientName,
       clientEmail: client.clientEmail,
       registeredName: client.registeredName,
-      workanniversary: client.workanniversary ? client.workanniversary.toISOString() : null,
+      workanniversary: client.workanniversary
+        ? client.workanniversary.toISOString()
+        : null,
       registeredAddress: client.registeredAddress,
       deliveryAddress: client.deliveryAddress,
       clientNotes: client.clientNotes,
@@ -382,28 +384,35 @@ export const updateClient = async (
             firstName: client.createdBy.firstName || "",
             lastName: client.createdBy.lastName || "",
             companyName: client.createdBy.companyName || "",
-            companyReferenceNumber: client.createdBy.companyReferenceNumber || "",
+            companyReferenceNumber:
+              client.createdBy.companyReferenceNumber || "",
           }
         : null,
     };
 
-    responseHandler(res, 200, "Client updated successfully", "success", clientData);
+    responseHandler(
+      res,
+      200,
+      "Client updated successfully",
+      "success",
+      clientData
+    );
   } catch (error: any) {
-    console.error("updateClient - Error:", {
-      message: error.message,
-      stack: error.stack,
-      clientId: req.params.clientId,
-      updatedClientData: req.body,
-    });
-    responseHandler(res, 500, error.message || "Internal server error", "error");
+    responseHandler(
+      res,
+      500,
+      error.message || "Internal server error",
+      "error"
+    );
   }
 };
-export const deleteClient = async (req: Request, res: Response): Promise<void> => {
+export const deleteClient = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.userId;
     const { clientId } = req.body;
-
-    console.log("deleteClient - userId:", userId, "clientId:", clientId);
 
     if (!userId || !clientId) {
       responseHandler(res, 400, "Missing userId or clientId", "error");
@@ -426,20 +435,11 @@ export const deleteClient = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    console.log("deleteClient - Updated MyClient document:", {
-      userId,
-      clientIds: updateResult.clientId.map((c: any) => c._id.toString()),
-    });
-
     responseHandler(res, 200, "Client removed successfully", "success", {
       updatedClients: updateResult.clientId,
       count: updateResult.clientId.length,
     });
   } catch (error: any) {
-    console.error("deleteClient - Error:", {
-      message: error.message,
-      stack: error.stack,
-    });
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
