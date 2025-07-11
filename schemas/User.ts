@@ -16,7 +16,6 @@ export interface IUser extends Document {
   status?: "pending" | "active" | "inactive";
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
-  // clientId: Types.ObjectId;
   createdAt?: Date;
   updatedAt?: Date;
   createPasswordResetToken: () => string;
@@ -31,11 +30,7 @@ const userSchema: Schema<IUser> = new Schema(
     password: { type: String, required: true },
     companyName: { type: String, required: true },
     companyReferenceNumber: { type: String, required: true, unique: true },
-    // clientId: {
-    //   type: Schema.Types.ObjectId,
-    //   ref: "Client",
-    //   required: true,
-    // },
+   
     consentGiven: { type: Boolean, required: true, default: false },
     roles: [
       {

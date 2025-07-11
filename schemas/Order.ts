@@ -18,7 +18,7 @@ const orderSchema: Schema<IOrder> = new Schema(
     clientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
-      required: false,
+      required: true,
     },
     invoiceNumber: {
       type: String,

@@ -6,8 +6,9 @@ import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 import Order from "../schemas/Order";
 import OrderItem from "../schemas/OrderItem";
-import Cart from "../schemas/cart";
+// import Cart from "../schemas/cart";
 import CartItem from "../schemas/CartItem";
+import Cart from "../schemas/Cart";
 
 interface AuthRequest extends Request {
   userId?: string;
@@ -22,6 +23,7 @@ interface AuthRequest extends Request {
  */
 const createBuyOrder = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+  
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
       return responseHandler(res, 401, `Unauthorized: Invalid userId: ${req.userId}`, "error");
     }
@@ -74,99 +76,6 @@ const isValidDate = (date: string): boolean => {
   const parsedDate = new Date(date);
   return parsedDate instanceof Date && !isNaN(parsedDate.getTime());
 };
-/**
- * Creates bulk buy orders for the authenticated user.
- *
- * @param {AuthRequest} req - Express request object containing userId and an array of orders in the body.
- * @param {Response} res - Express response object.
- * @returns {Promise<void>} - A promise that resolves when the operation is complete.
- */
-
-// const createBulkBuyOrders = async (
-//   req: AuthRequest,
-//   res: Response
-// ): Promise<void> => {
-//   const { orders } = req.body;
-//   console.log(req.body);
-//   const userId = req.userId;
-
-//   if (!Array.isArray(orders) || orders.length === 0) {
-//     return responseHandler(res, 400, "Orders array is required", "error");
-//   }
-
-//   // Validate clientId for the first order
-//   if (!orders[0].clientId || !mongoose.Types.ObjectId.isValid(orders[0].clientId)) {
-//     return responseHandler(res, 400, "Valid clientId is required for the order", "error");
-//   }
-
-//   const session = await mongoose.startSession();
-
-//   try {
-//     session.startTransaction();
-
-//     const invoiceNumber = uuidv4();
-
-//     const totalAmount = orders.reduce((sum, item) => sum + item.total, 0);
-
-//     const createdOrder = await Order.create(
-//       [
-//         {
-//           userId,
-//           clientId: orders[0].clientId,
-//           invoiceNumber,
-//           total: totalAmount,
-//         },
-//       ],
-//       {
-//         session,
-//       }
-//     );
-
-//     const orderItems = orders.map((item) => ({
-//       orderId: createdOrder[0]._id,
-//       inventoryId: item.inventoryId,
-//       quantity: item.quantity,
-//       price: item.price,
-//       deliveryDate: item.deliveryDate,
-//     }));
-
-//     await OrderItem.insertMany(orderItems, { session });
-
-//     const userCart = await Cart.findOne({ userId }).select("_id");
-
-//     if (userCart) {
-//       await CartItem.deleteMany({ cartId: userCart._id });
-//     }
-//     await Cart.deleteOne({ userId }, { session });
-
-//     await session.commitTransaction();
-
-//     responseHandler(
-//       res,
-//       201,
-//       "Orders created successfully",
-//       "success",
-//       createdOrder
-//     );
-//   } catch (error: any) {
-//     await session.abortTransaction();
-//     console.error("Error creating bulk buy orders:", {
-//       message: error.message,
-//       stack: error.stack,
-//       orders: req.body,
-//       userId: req.userId,
-//     });
-//     responseHandler(
-//       res,
-//       500,
-//       error.message || "Internal server error",
-//       "error"
-//     );
-//   } finally {
-//     session.endSession();
-//   }
-// };
-
 
 
 
@@ -295,13 +204,121 @@ const createBulkBuyOrders = async (req: AuthRequest, res: Response): Promise<voi
 };
 
 
-/**
- * Retrieves all buy orders visible to the authenticated user or client.
- *
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @returns {Promise<void>}
- */
+// const getAllBuyOrders = async (
+//   req: AuthRequest,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
+//       return responseHandler(
+//         res,
+//         401,
+//         `Unauthorized: Invalid userId: ${req.userId}`,
+//         "error"
+//       );
+//     }
+
+//     const result = await Order.aggregate([
+//       {
+//         $match: {
+//           $or: [
+//             { userId: new Types.ObjectId(req.userId) }, // User who placed the order
+//             { clientId: new Types.ObjectId(req.userId) }, // Client associated with the order
+//           ],
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "orderitems",
+//           localField: "_id",
+//           foreignField: "orderId",
+//           as: "orderItems",
+//         },
+//       },
+//       {
+//         $unwind: { path: "$orderItems", preserveNullAndEmptyArrays: true },
+//       },
+//       {
+//         $lookup: {
+//           from: "adminproducts",
+//           localField: "orderItems.inventoryId",
+//           foreignField: "_id",
+//           as: "adminProductId",
+//         },
+//       },
+//       {
+//         $unwind: { path: "$adminProductId", preserveNullAndEmptyArrays: true },
+//       },
+//       {
+//         $lookup: {
+//           from: "clients",
+//           localField: "clientId",
+//           foreignField: "_id",
+//           as: "clientDetails",
+//         },
+//       },
+//       {
+//         $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
+//       },
+//       {
+//         $project: {
+//           id: "$_id",
+//           clientId: { $ifNull: ["$clientDetails._id", ""] },
+//           clientName: { $ifNull: ["$clientDetails.clientName", "-"] },
+//           productId: { $ifNull: ["$orderItems.productId", "-"] },
+//           productName: { $ifNull: ["$orderItems.productName", "-"] },
+//           supplierName: { $ifNull: ["$orderItems.supplierName", "-"] },
+//           size: { $ifNull: ["$orderItems.size", "-"] },
+//           color: { $ifNull: ["$orderItems.color", "-"] },
+//           quantity: { $ifNull: ["$orderItems.quantity", 0] },
+//           price: { $ifNull: ["$orderItems.price", 0] },
+//           ccy: { $ifNull: ["$orderItems.ccy", "USD"] },
+//           deliveryDate: { $ifNull: ["$orderItems.deliveryDate", new Date().toISOString()] },
+//           inventoryId: { $ifNull: ["$orderItems.inventoryId", ""] },
+//           orderStatus: { $ifNull: ["$orderStatus", "Requested"] },
+//           orderValue: {
+//             $concat: [
+//               {
+//                 $toString: {
+//                   $multiply: [
+//                     { $ifNull: ["$orderItems.quantity", 0] },
+//                     { $ifNull: ["$orderItems.price", 0] },
+//                   ],
+//                 },
+//               },
+//               " ",
+//               { $ifNull: ["$orderItems.ccy", "USD"] },
+//             ],
+//           },
+//           hasOrderItems: { $cond: [{ $eq: [{ $type: "$orderItems" }, "object"] }, true, false] }, // Debug flag
+//         },
+//       },
+//     ]);
+
+//     // Log orders with missing orderItems for debugging
+//     const missingOrderItems = result.filter((order) => !order.hasOrderItems);
+//     if (missingOrderItems.length > 0) {
+//       console.warn("Orders with missing orderItems:", JSON.stringify(missingOrderItems, null, 2));
+//     }
+
+//     console.log("Fetched buy orders:", JSON.stringify(result, null, 2));
+//     responseHandler(res, 200, "Buy orders fetched successfully", "success", {
+//       buyOrders: result,
+//     });
+//   } catch (error: any) {
+//     console.error("Error fetching buy orders:", {
+//       message: error.message,
+//       stack: error.stack,
+//       userId: req.userId,
+//     });
+//     responseHandler(
+//       res,
+//       500,
+//       error.message || "Failed to fetch buy orders",
+//       "error"
+//     );
+//   }
+// };
 const getAllBuyOrders = async (
   req: AuthRequest,
   res: Response
@@ -316,73 +333,97 @@ const getAllBuyOrders = async (
       );
     }
 
-    const result = await Order.aggregate([
-      {
-        $match: {
-          $or: [
-            { userId: new Types.ObjectId(req.userId) }, // User who placed the order
-            { clientId: new Types.ObjectId(req.userId) }, // Client associated with the order
-          ],
-        },
-      },
-      {
-        $lookup: {
-          from: "adminproducts",
-          localField: "inventoryId",
-          foreignField: "_id",
-          as: "adminProductId",
-        },
-      },
-      {
-        $unwind: { path: "$adminProductId", preserveNullAndEmptyArrays: true },
-      },
-      {
-        $lookup: {
-          from: "clients",
-          localField: "clientId",
-          foreignField: "_id",
-          as: "clientId",
-        },
-      },
-      {
-        $unwind: { path: "$clientId", preserveNullAndEmptyArrays: true },
-      },
-      {
-        $project: {
-          id: "$_id",
-          productName: {
-            $ifNull: ["$productName", "$adminProductId.productName", "-"],
-          },
-          supplierName: {
-            $ifNull: ["$supplierName", "$clientId.clientName", "-"],
-          },
-          size: { $ifNull: ["$size", "$adminProductId.size", "-"] },
-          color: { $ifNull: ["$color", "$adminProductId.color", "-"] },
-          quantity: { $ifNull: ["$quantity", 0] },
-          price: { $ifNull: ["$price", 0] },
-          ccy: { $ifNull: ["$ccy", "USD"] },
-          deliveryDate: {
-            $ifNull: ["$deliveryDate", new Date().toISOString()],
-          },
-          inventoryId: { $ifNull: ["$inventoryId", ""] },
-          orderStatus: { $ifNull: ["$orderStatus", "Requested"] },
-          orderValue: {
-            $concat: [
-              { $toString: { $ifNull: ["$price", 0] } },
-              " ",
-              { $ifNull: ["$ccy", "USD"] },
-            ],
-          },
-          totalItems: { $ifNull: ["$quantity", 0] },
-          expectedDate: {
-            $dateToString: {
-              format: "%Y-%m-%d",
-              date: { $ifNull: ["$deliveryDate", new Date()] },
+const result = await Order.aggregate([
+  {
+    $match: {
+      $or: [
+        { userId: new Types.ObjectId(req.userId) },
+        { clientId: new Types.ObjectId(req.userId) },
+      ],
+    },
+  },
+  {
+    $lookup: {
+      from: "orderitems",
+      localField: "_id",
+      foreignField: "orderId",
+      as: "orderItems",
+    },
+  },
+  {
+    $unwind: { path: "$orderItems", preserveNullAndEmptyArrays: true },
+  },
+  {
+    $lookup: {
+      from: "Inventory", // Keep for potential future use
+      localField: "orderItems.inventoryId",
+      foreignField: "_id",
+      as: "adminProductId",
+    },
+  },
+  {
+    $unwind: { path: "$adminProductId", preserveNullAndEmptyArrays: true },
+  },
+  {
+    $lookup: {
+      from: "clients",
+      localField: "orderItems.clientId",
+      foreignField: "_id",
+      as: "clientDetails",
+    },
+  },
+  {
+    $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
+  },
+  {
+    $project: {
+      id: "$_id",
+      clientId: { $ifNull: ["$clientId._id", ""] },
+      productId: { $ifNull: ["$orderItems.inventoryId", "-"] },
+      productName: { $ifNull: ["$orderItems.productName", "-"] }, // Source from orderItems
+      supplierName: { $ifNull: ["$orderItems.supplierName", "-"] }, // Source from orderItems
+      size: { $ifNull: ["$orderItems.size", "-"] }, // Source from orderItems
+      color: { $ifNull: ["$orderItems.color", "-"] }, // Source from orderItems
+      quantity: { $ifNull: ["$orderItems.quantity", 0] },
+      price: { $ifNull: ["$orderItems.price", 0] },
+      ccy: { $ifNull: ["$orderItems.ccy", "USD"] },
+      deliveryDate: { $ifNull: ["$orderItems.deliveryDate", new Date().toISOString()] },
+      inventoryId: { $ifNull: ["$orderItems.inventoryId", ""] },
+      orderStatus: { $ifNull: ["$orderStatus", "Requested"] },
+      orderValue: {
+        $concat: [
+          {
+            $toString: {
+              $multiply: [
+                { $ifNull: ["$orderItems.quantity", 0] },
+                { $ifNull: ["$orderItems.price", 0] },
+              ],
             },
           },
-        },
+          " ",
+          { $ifNull: ["$orderItems.ccy", "USD"] },
+        ],
       },
-    ]);
+      hasOrderItems: { $cond: [{ $eq: [{ $type: "$orderItems" }, "object"] }, true, false] },
+      orderItemsDebug: "$orderItems",
+      adminProductDebug: "$adminProductId",
+      clientDetailsDebug: "$clientDetails",
+    },
+  },
+]);
+
+// Log for debugging
+console.log("Aggregation result:", JSON.stringify(result, null, 2));
+    // Log orders with missing orderItems or fields
+    const missingData = result.filter(
+      (order) =>
+        !order.hasOrderItems ||
+        !order.orderItemsDebug?.productName ||
+        !order.orderItemsDebug?.supplierName
+    );
+    if (missingData.length > 0) {
+      console.warn("Orders with missing orderItems or fields:", JSON.stringify(missingData, null, 2));
+    }
 
     console.log("Fetched buy orders:", JSON.stringify(result, null, 2));
     responseHandler(res, 200, "Buy orders fetched successfully", "success", {
@@ -402,13 +443,9 @@ const getAllBuyOrders = async (
     );
   }
 };
-/**
- * Deletes a buy order by its ID.
- *
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @returns {Promise<void>}
- */
+
+
+
 const deleteBuyOrder = async (
   req: AuthRequest,
   res: Response
@@ -440,69 +477,147 @@ const deleteBuyOrder = async (
   }
 };
 
-/**
- * Updates a buy order's status, quantity, and delivery date.
- *
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @returns {Promise<void>}
- */
-const updateBuyOrder = async (
-  req: AuthRequest,
-  res: Response
-): Promise<void> => {
+
+
+// const updateBuyOrder = async (
+//   req: AuthRequest,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     const { buyOrderId } = req.params;
+//     const { orderStatus, quantity, deliveryDate,price} = req.body;
+// console.log("req.userId:", req.userId); // Debug log
+//     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
+//       return responseHandler(
+//         res,
+//         401,
+//         `Unauthorized: Invalid userId: ${req.userId}`,
+//         "error"
+//       );
+//     }
+
+//     if (!Types.ObjectId.isValid(buyOrderId)) {
+//       return responseHandler(
+//         res,
+//         400,
+//         `Invalid buyOrderId: ${buyOrderId}`,
+//         "error"
+//       );
+//     }
+
+//     // Validate input fields
+//     if (orderStatus && typeof orderStatus !== "string") {
+//       return responseHandler(
+//         res,
+//         400,
+//         `Invalid orderStatus: ${orderStatus}`,
+//         "error"
+//       );
+//     }
+//     if (
+//       quantity !== undefined &&
+//       (typeof quantity !== "number" || quantity <= 0)
+//     ) {
+//       return responseHandler(
+//         res,
+//         400,
+//         `Invalid quantity: ${quantity}`,
+//         "error"
+//       );
+//     }
+//     if (deliveryDate && isNaN(new Date(deliveryDate).getTime())) {
+//       return responseHandler(
+//         res,
+//         400,
+//         `Invalid deliveryDate: ${deliveryDate}`,
+//         "error"
+//       );
+//     }
+
+//     // Find the buy order and ensure the user is authorized (either userId or clientId matches)
+//     const buyOrder = await Order.findOne({
+//       _id: new Types.ObjectId(buyOrderId),
+//       $or: [
+//         { userId: new Types.ObjectId(req.userId) },
+//         { clientId: new Types.ObjectId(req.userId) },
+//       ],
+//     });
+
+//     if (!buyOrder) {
+//       return responseHandler(
+//         res,
+//         404,
+//         "Buy order not found or not authorized",
+//         "error"
+//       );
+//     }
+
+//     await Order.findOneAndUpdate(
+//       { _id: new Types.ObjectId(buyOrderId) },
+//       {
+//         $set: {
+//           orderStatus,
+//         },
+//       }
+//     );
+
+//     await OrderItem.findOneAndUpdate(
+// { orderId: new Types.ObjectId(buyOrderId) },
+//       {
+//         $set: {
+//           quantity,
+//           deliveryDate,
+//           price
+//         },
+//       }
+//     );
+
+//     responseHandler(res, 200, "Buy order updated successfully", "success");
+//   } catch (error: any) {
+//     console.error("Error updating buy order:", {
+//       message: error.message,
+//       stack: error.stack,
+//       buyOrderId: req.params.buyOrderId,
+//       userId: req.userId,
+//       body: req.body,
+//     });
+//     responseHandler(
+//       res,
+//       500,
+//       error.message || "Internal server error",
+//       "error"
+//     );
+//   }
+// };
+const updateBuyOrder = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { buyOrderId } = req.params;
-    const { orderStatus, quantity, deliveryDate,price} = req.body;
+    const { quantity, deliveryDate, price } = req.body;
+
+    console.log("UpdateBuyOrder - Input:", {
+      buyOrderId,
+      userId: req.userId,
+      body: req.body
+    });
 
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
-      return responseHandler(
-        res,
-        401,
-        `Unauthorized: Invalid userId: ${req.userId}`,
-        "error"
-      );
+      return responseHandler(res, 401, `Unauthorized: Invalid userId: ${req.userId}`, "error");
     }
 
     if (!Types.ObjectId.isValid(buyOrderId)) {
-      return responseHandler(
-        res,
-        400,
-        `Invalid buyOrderId: ${buyOrderId}`,
-        "error"
-      );
+      return responseHandler(res, 400, `Invalid buyOrderId: ${buyOrderId}`, "error");
     }
 
-    // Validate input fields
-    if (orderStatus && typeof orderStatus !== "string") {
-      return responseHandler(
-        res,
-        400,
-        `Invalid orderStatus: ${orderStatus}`,
-        "error"
-      );
-    }
-    if (
-      quantity !== undefined &&
-      (typeof quantity !== "number" || quantity <= 0)
-    ) {
-      return responseHandler(
-        res,
-        400,
-        `Invalid quantity: ${quantity}`,
-        "error"
-      );
+    if (quantity !== undefined && (typeof quantity !== "number" || quantity <= 0)) {
+      return responseHandler(res, 400, `Invalid quantity: ${quantity}`, "error");
     }
     if (deliveryDate && isNaN(new Date(deliveryDate).getTime())) {
-      return responseHandler(
-        res,
-        400,
-        `Invalid deliveryDate: ${deliveryDate}`,
-        "error"
-      );
+      return responseHandler(res, 400, `Invalid deliveryDate: ${deliveryDate}`, "error");
+    }
+    if (price !== undefined && (typeof price !== "number" || price < 0)) {
+      return responseHandler(res, 400, `Invalid price: ${price}`, "error");
     }
 
-    // Find the buy order and ensure the user is authorized (either userId or clientId matches)
     const buyOrder = await Order.findOne({
       _id: new Types.ObjectId(buyOrderId),
       $or: [
@@ -511,31 +626,26 @@ const updateBuyOrder = async (
       ],
     });
 
+    console.log("Found buyOrder:", buyOrder);
+
     if (!buyOrder) {
-      return responseHandler(
-        res,
-        404,
-        "Buy order not found or not authorized",
-        "error"
-      );
+      return responseHandler(res, 404, "Buy order not found or not authorized", "error");
     }
 
-    await Order.findOneAndUpdate(
-      { _id: new Types.ObjectId(buyOrderId) },
-      {
-        $set: {
-          orderStatus,
-        },
-      }
-    );
+    const orderItem = await OrderItem.findOne({ orderId: new Types.ObjectId(buyOrderId) });
+    console.log("Found orderItem:", orderItem);
+
+    if (!orderItem) {
+      return responseHandler(res, 404, "OrderItem not found for this buy order", "error");
+    }
 
     await OrderItem.findOneAndUpdate(
       { orderId: new Types.ObjectId(buyOrderId) },
       {
         $set: {
-          quantity,
-          deliveryDate,
-          price
+          quantity: quantity !== undefined ? quantity : orderItem.quantity,
+          deliveryDate: deliveryDate !== undefined ? deliveryDate : orderItem.deliveryDate,
+          price: price !== undefined ? price : orderItem.price,
         },
       }
     );
@@ -548,16 +658,12 @@ const updateBuyOrder = async (
       buyOrderId: req.params.buyOrderId,
       userId: req.userId,
       body: req.body,
+      route: req.originalUrl,
+      method: req.method,
     });
-    responseHandler(
-      res,
-      500,
-      error.message || "Internal server error",
-      "error"
-    );
+    responseHandler(res, 500, error.message || "Internal server error", "error");
   }
 };
-
 
 
 export {

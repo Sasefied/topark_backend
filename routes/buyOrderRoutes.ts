@@ -14,7 +14,7 @@ router
   .post("/bulk", createBulkBuyOrders)
   .get("/", getAllBuyOrders)
   .delete("/:id", deleteBuyOrder)
-  .put("/:id", updateBuyOrder);
+  .patch("/:buyOrderId", updateBuyOrder);
   
 
 export default router;
