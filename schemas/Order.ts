@@ -5,7 +5,7 @@ export interface IOrder extends Document {
   clientId: mongoose.Schema.Types.ObjectId;
   invoiceNumber: string;
   total: number;
-  orderStatus: string;
+  outstandingTotal: number;
 }
 
 const orderSchema: Schema<IOrder> = new Schema(
@@ -28,11 +28,10 @@ const orderSchema: Schema<IOrder> = new Schema(
       type: Number,
       required: true,
     },
-    orderStatus: {
-      type: String,
-      enum: ["Pending", "Requested", "Confirmed"],
+    outstandingTotal: {
+      type: Number,
+      min: 0,
       required: true,
-      default: "Requested",
     },
   },
   { timestamps: true }
