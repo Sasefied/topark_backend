@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 export interface IOrder extends Document {
   userId: mongoose.Schema.Types.ObjectId;
@@ -36,5 +37,7 @@ const orderSchema: Schema<IOrder> = new Schema(
   },
   { timestamps: true }
 );
+
+orderSchema.plugin(mongooseAggregatePaginate);
 
 export default mongoose.model<IOrder>("Order", orderSchema);

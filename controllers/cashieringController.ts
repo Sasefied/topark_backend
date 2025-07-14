@@ -64,6 +64,7 @@ const getAllCashieringOrders = async (req: Request, res: Response) => {
 
     responseHandler(res, 200, "Orders fetched successfully", "success", orders);
   } catch (error: any) {
+    console.error("Error fetching cashiering orders:", error);
     throw new InternalServerError();
   }
 };
