@@ -13,8 +13,8 @@ router
   .post("/", createBuyOrder)
   .post("/bulk", createBulkBuyOrders)
   .get("/", getAllBuyOrders)
+  .patch("/:buyOrderId", updateBuyOrder)
   .delete("/:id", deleteBuyOrder)
-  .patch("/:buyOrderId", updateBuyOrder);
   
 
 export default router;
