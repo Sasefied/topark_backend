@@ -1,15 +1,17 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface IOrder extends Document {
+  _id: mongoose.Schema.Types.ObjectId;
   userId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
   invoiceNumber: string;
   total: number;
-  orderStatus: string;
+  orderStatus: "Pending" | "Requested" | "Confirmed";
 }
 
 const orderSchema: Schema<IOrder> = new Schema(
   {
+    _id: { type: mongoose.Schema.Types.ObjectId, required: true, auto: true },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -27,6 +29,7 @@ const orderSchema: Schema<IOrder> = new Schema(
     total: {
       type: Number,
       required: true,
+      default: 0,
     },
     orderStatus: {
       type: String,
