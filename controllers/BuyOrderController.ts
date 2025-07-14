@@ -230,30 +230,149 @@ const createBulkBuyOrders = async (
     );
   }
 };
-const getAllBuyOrders = async (
-  req: AuthRequest,
-  res: Response
-): Promise<void> => {
+// const getAllBuyOrders = async (
+//   req: AuthRequest,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
+//       return responseHandler(
+//         res,
+//         401,
+//         `Unauthorized: Invalid userId: ${req.userId}`,
+//         "error"
+//       );
+//     }
+//     console.log("Fetching orders for userId:", req.userId);
+
+//     const result = await Order.aggregate([
+//       {
+//         $match: {
+//           $or: [
+//             { userId: new Types.ObjectId(req.userId) },
+//             { clientId: new Types.ObjectId(req.userId) },
+//           ],
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "orderitems",
+//           localField: "_id",
+//           foreignField: "orderId",
+//           as: "orderItems",
+//         },
+//       },
+//       {
+//         $unwind: { path: "$orderItems", preserveNullAndEmptyArrays: true },
+//       },
+//       {
+//         $lookup: {
+//           from: "inventory",
+//           localField: "orderItems.inventoryId",
+//           foreignField: "_id",
+//           as: "adminProductId",
+//         },
+//       },
+//       {
+//         $unwind: { path: "$adminProductId", preserveNullAndEmptyArrays: true },
+//       },
+//       {
+//         $lookup: {
+//           from: "clients",
+//           localField: "clientId",
+//           foreignField: "_id",
+//           as: "clientDetails",
+//         },
+//       },
+//       {
+//         $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
+//       },
+//       {
+//         $project: {
+//           id: "$_id",
+//           clientId: { $ifNull: ["$clientDetails._id", ""] },
+//           productId: { $ifNull: ["$orderItems.productId", "-"] },
+//           productName: { $ifNull: ["$orderItems.productName", "-"] },
+//           supplierName: { $ifNull: ["$orderItems.supplierName", "-"] },
+//           size: { $ifNull: ["$orderItems.size", "-"] },
+//           color: { $ifNull: ["$orderItems.color", "-"] },
+//           quantity: { $ifNull: ["$orderItems.quantity", 0] },
+//           price: { $ifNull: ["$orderItems.price", 0] },
+//           ccy: { $ifNull: ["$orderItems.ccy", "USD"] },
+//           deliveryDate: {
+//             $ifNull: ["$orderItems.deliveryDate", new Date().toISOString()],
+//           },
+//           inventoryId: { $ifNull: ["$orderItems.inventoryId", ""] },
+//           orderStatus: { $ifNull: ["$orderStatus", "Requested"] },
+//           orderValue: {
+//             $concat: [
+//               {
+//                 $toString: {
+//                   $multiply: [
+//                     { $ifNull: ["$orderItems.quantity", 0] },
+//                     { $ifNull: ["$orderItems.price", 0] },
+//                   ],
+//                 },
+//               },
+//               " ",
+//               { $ifNull: ["$orderItems.ccy", "USD"] },
+//             ],
+//           },
+//           hasOrderItems: {
+//             $cond: [{ $eq: [{ $type: "$orderItems" }, "object"] }, true, false],
+//           },
+//           orderItemsDebug: "$orderItems",
+//           clientDetailsDebug: "$clientDetails",
+//         },
+//       },
+//     ]);
+
+//     console.log("Fetched buy orders:", JSON.stringify(result, null, 2));
+//     responseHandler(res, 200, "Buy orders fetched successfully", "success", {
+//       buyOrders: result,
+//     });
+//   } catch (error: any) {
+//     console.error("Error fetching buy orders:", {
+//       message: error.message,
+//       stack: error.stack,
+//       userId: req.userId,
+//     });
+//     responseHandler(
+//       res,
+//       500,
+//       error.message || "Failed to fetch buy orders",
+//       "error"
+//     );
+//   }
+// };
+const getAllBuyOrders = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
-      return responseHandler(
-        res,
-        401,
-        `Unauthorized: Invalid userId: ${req.userId}`,
-        "error"
-      );
+      return responseHandler(res, 401, `Unauthorized: Invalid userId: ${req.userId}`, "error");
     }
-    console.log("Fetching orders for userId:", req.userId);
 
-    const result = await Order.aggregate([
-      {
-        $match: {
-          $or: [
-            { userId: new Types.ObjectId(req.userId) },
-            { clientId: new Types.ObjectId(req.userId) },
-          ],
-        },
-      },
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const query = req.query.query as string;
+    const status = req.query.status as string;
+    const skip = (page - 1) * limit;
+
+    console.log("Fetching orders for userId:", req.userId, "Page:", page, "Limit:", limit, "Query:", query, "Status:", status);
+
+    // Build match stage with search and status filters
+    const matchStage: any = {
+      $or: [
+        { userId: new Types.ObjectId(req.userId) },
+        { clientId: new Types.ObjectId(req.userId) },
+      ],
+    };
+
+    if (status) {
+      matchStage.orderStatus = status;
+    }
+
+    const pipeline = [
+      { $match: matchStage },
       {
         $lookup: {
           from: "orderitems",
@@ -287,6 +406,19 @@ const getAllBuyOrders = async (
       {
         $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
       },
+      // Add search query filter
+      ...(query
+        ? [
+            {
+              $match: {
+                $or: [
+                  { "orderItems.productName": { $regex: query, $options: "i" } },
+                  { "orderItems.supplierName": { $regex: query, $options: "i" } },
+                ],
+              },
+            },
+          ]
+        : []),
       {
         $project: {
           id: "$_id",
@@ -318,18 +450,53 @@ const getAllBuyOrders = async (
               { $ifNull: ["$orderItems.ccy", "USD"] },
             ],
           },
-          hasOrderItems: {
-            $cond: [{ $eq: [{ $type: "$orderItems" }, "object"] }, true, false],
-          },
-          orderItemsDebug: "$orderItems",
-          clientDetailsDebug: "$clientDetails",
         },
       },
-    ]);
+      { $skip: skip },
+      { $limit: limit },
+    ];
 
-    console.log("Fetched buy orders:", JSON.stringify(result, null, 2));
+    // Run aggregation to get paginated orders
+    const orders = await Order.aggregate(pipeline);
+
+    // Get total count for pagination
+    const countPipeline = [
+      { $match: matchStage },
+      ...(query
+        ? [
+            {
+              $lookup: {
+                from: "orderitems",
+                localField: "_id",
+                foreignField: "orderId",
+                as: "orderItems",
+              },
+            },
+            {
+              $unwind: { path: "$orderItems", preserveNullAndEmptyArrays: true },
+            },
+            {
+              $match: {
+                $or: [
+                  { "orderItems.productName": { $regex: query, $options: "i" } },
+                  { "orderItems.supplierName": { $regex: query, $options: "i" } },
+                ],
+              },
+            },
+          ]
+        : []),
+      { $count: "total" },
+    ];
+    const countResult = await Order.aggregate(countPipeline);
+    const totalOrders = countResult.length > 0 ? countResult[0].total : 0;
+
+    console.log("Fetched buy orders:", orders.length, "Total orders:", totalOrders);
+
     responseHandler(res, 200, "Buy orders fetched successfully", "success", {
-      buyOrders: result,
+      buyOrders: orders,
+      totalOrders,
+      page,
+      limit,
     });
   } catch (error: any) {
     console.error("Error fetching buy orders:", {
@@ -337,15 +504,9 @@ const getAllBuyOrders = async (
       stack: error.stack,
       userId: req.userId,
     });
-    responseHandler(
-      res,
-      500,
-      error.message || "Failed to fetch buy orders",
-      "error"
-    );
+    responseHandler(res, 500, error.message || "Failed to fetch buy orders", "error");
   }
 };
-
 const deleteBuyOrder = async (
   req: AuthRequest,
   res: Response
