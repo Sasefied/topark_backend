@@ -7,6 +7,7 @@ export interface IOrder extends Document {
   invoiceNumber: string;
   total: number;
   outstandingTotal: number;
+   orderStatus: string;
 }
 
 const orderSchema: Schema<IOrder> = new Schema(
@@ -33,6 +34,12 @@ const orderSchema: Schema<IOrder> = new Schema(
       type: Number,
       min: 0,
       required: true,
+    },
+    orderStatus: {
+      type: String,
+      enum: ["Pending", "Confirmed", "Delivered"],
+      required: true,
+      default: "Pending",
     },
   },
   { timestamps: true }

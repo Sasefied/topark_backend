@@ -8,11 +8,10 @@ export interface IOrderItem extends Document {
   price: number;
   outstandingPrice: number;
   deliveryDate: Date;
-  productName?: string;
-  supplierName?: string;
-  size?: string;
-  color?: string;
-  orderStatus: string;
+  // productName?: string;
+  // supplierName?: string;
+  // size?: string;
+  // color?: string;
 }
 
 const orderItemSchema: Schema<IOrderItem> = new Schema(
@@ -48,28 +47,22 @@ const orderItemSchema: Schema<IOrderItem> = new Schema(
       required: true,
       default: Date.now,
     },
-    productName: {
-      type: String,
-      required: false,
-    },
-    supplierName: {
-      type: String,
-      required: false,
-    },
-    size: {
-      type: String,
-      required: false,
-    },
-    color: {
-      type: String,
-      required: false,
-    },
-    orderStatus: {
-      type: String,
-      enum: ["Pending", "Requested", "Confirmed"],
-      required: true,
-      default: "Requested",
-    },
+    // productName: {
+    //   type: String,
+    //   required: false,
+    // },
+    // supplierName: {
+    //   type: String,
+    //   required: false,
+    // },
+    // size: {
+    //   type: String,
+    //   required: false,
+    // },
+    // color: {
+    //   type: String,
+    //   required: false,
+    // },
   },
   { timestamps: true }
 );
