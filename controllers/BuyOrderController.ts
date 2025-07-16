@@ -9,10 +9,6 @@ import CartItem from "../schemas/CartItem";
 import Cart from "../schemas/Cart";
 import { NotFoundError } from "../utils/errors";
 
-interface AuthRequest extends Request {
-  userId?: string;
-}
-
 /**
  * Creates a single buy order.
  *
@@ -21,7 +17,7 @@ interface AuthRequest extends Request {
  * @returns {Promise<void>}
  */
 const createBuyOrder = async (
-  req: AuthRequest,
+  req: Request,
   res: Response
 ): Promise<void> => {
   try {
@@ -75,8 +71,15 @@ const createBuyOrder = async (
   }
 };
 
+/**
+ * Creates multiple buy orders in bulk.
+ *
+ * @param {Request} req
+ * @param {Response} res
+ * @returns {Promise<void>}
+ */
 const createBulkBuyOrders = async (
-  req: AuthRequest,
+  req: Request,
   res: Response
 ): Promise<void> => {
   const { orders } = req.body;
@@ -85,67 +88,55 @@ const createBulkBuyOrders = async (
   const session = await Order.startSession();
   session.startTransaction();
   try {
-    const createdOrders = [];
     for (const order of orders) {
       const {
-        productName,
-        supplierName,
-        size,
-        color,
+        clientId,
         quantity,
         price,
-        ccy,
+        orderStatus,
         deliveryDate,
         inventoryId,
-        productId,
-        clientId,
-        orderStatus,
       } = order;
-
-      const newOrder = new Order({
+      console.log("userId", userId)
+      const existingOrder = await Order.findOne({
         userId: new Types.ObjectId(userId),
-        clientId: clientId ? new Types.ObjectId(clientId) : null,
-        total: quantity * price,
-        outstandingTotal: quantity * price,
-        orderStatus: orderStatus || "Requested",
-        invoiceNumber: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      });
-
-      const savedOrder = await newOrder.save({ session });
+      }).session(session);
+      console.log("existingOrder", existingOrder)
+      let newOrder = null
+      if(existingOrder){
+        newOrder = await Order.findOneAndUpdate({
+          userId: new Types.ObjectId(userId),
+        }, {
+          $set: {
+            clientId,
+            total: (quantity * price) + existingOrder.total,
+            outstandingTotal: (quantity * price) + existingOrder.outstandingTotal,
+            orderStatus: orderStatus || "Pending",
+          }  
+        },
+        {new: true}
+        )
+      }else {
+        newOrder = await Order.create({
+          userId: new Types.ObjectId(userId),
+          clientId,
+          total: quantity * price,
+          outstandingTotal: quantity * price,
+          orderStatus: orderStatus || "Pending",
+          invoiceNumber: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        })
+      }
 
       const newOrderItem = new OrderItem({
-        orderId: savedOrder._id,
+        orderId: newOrder?._id,
         inventoryId: new Types.ObjectId(inventoryId),
         quantity,
         price,
         outstandingPrice: quantity * price,
         deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
-        productName,
-        supplierName,
-        size,
-        color,
-        ccy: ccy || "USD",
-        productId: new Types.ObjectId(productId),
-        clientId: new Types.ObjectId(clientId),
       });
 
       await newOrderItem.save({ session });
-
-      createdOrders.push({
-        _id: savedOrder._id,
-        productName,
-        supplierName,
-        size,
-        color,
-        quantity,
-        price,
-        ccy: ccy || "USD",
-        deliveryDate: newOrderItem.deliveryDate,
-        inventoryId,
-        productId,
-        clientId: clientId || "",
-        total: savedOrder.total,
-      });
     }
 
     await session.commitTransaction();
@@ -153,8 +144,7 @@ const createBulkBuyOrders = async (
       res,
       201,
       "Orders created successfully",
-      "success",
-      createdOrders
+      "success"
     );
   } catch (error: any) {
     await session.abortTransaction();
@@ -182,7 +172,7 @@ const createBulkBuyOrders = async (
  * @returns {Promise<void>}
  */
 const getAllBuyOrders = async (
-  req: AuthRequest,
+  req: Request,
   res: Response
 ): Promise<void> => {
   const { page = 1, limit = 10, status } = req.query;
@@ -201,6 +191,17 @@ const getAllBuyOrders = async (
       },
       {
         $lookup: {
+          from: "clients",
+          localField: "clientId",
+          foreignField: "_id",
+          as: "clientDetails",
+        },
+      },
+      {
+        $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
+      },
+      {
+        $lookup: {
           from: "orderitems",
           localField: "_id",
           foreignField: "orderId",
@@ -215,22 +216,22 @@ const getAllBuyOrders = async (
           from: "inventories",
           localField: "orderItems.inventoryId",
           foreignField: "_id",
-          as: "adminProduct",
+          as: "inventory",
         },
       },
       {
-        $unwind: { path: "$adminProduct", preserveNullAndEmptyArrays: true },
+        $unwind: { path: "$inventory", preserveNullAndEmptyArrays: true },
       },
       {
         $lookup: {
-          from: "clients",
-          localField: "clientId",
+          from: "adminproducts",
+          localField: "inventory.adminProductId",
           foreignField: "_id",
-          as: "clientDetails",
+          as: "adminProducts",
         },
       },
       {
-        $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
+        $unwind: { path: "$adminProducts", preserveNullAndEmptyArrays: true },
       },
     ]);
 
@@ -266,7 +267,7 @@ const getAllBuyOrders = async (
 };
 
 const deleteBuyOrder = async (
-  req: AuthRequest,
+  req: Request,
   res: Response
 ): Promise<void> => {
   const { id } = req.params;
@@ -296,7 +297,7 @@ const deleteBuyOrder = async (
 };
 
 const updateBuyOrder = async (
-  req: AuthRequest,
+  req: Request,
   res: Response
 ): Promise<void> => {
   const { buyOrderId } = req.params;

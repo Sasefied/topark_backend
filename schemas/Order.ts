@@ -7,7 +7,7 @@ export interface IOrder extends Document {
   invoiceNumber: string;
   total: number;
   outstandingTotal: number;
-   orderStatus: string;
+  orderStatus: string;
 }
 
 const orderSchema: Schema<IOrder> = new Schema(

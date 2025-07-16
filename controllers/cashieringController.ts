@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { responseHandler } from "../utils/responseHandler";
-import Order from "../schemas/Order";
+import Order, { IOrder } from "../schemas/Order";
 import OrderItem from "../schemas/OrderItem";
 import {
   BadRequestError,
@@ -33,7 +33,7 @@ const getAllCashieringOrders = async (req: Request, res: Response) => {
         },
       },
       {
-        $unwind: "$client",
+        $unwind: { path: "$client", preserveNullAndEmptyArrays: true },
       },
       {
         $sort: {
@@ -45,6 +45,7 @@ const getAllCashieringOrders = async (req: Request, res: Response) => {
           _id: 1,
           invoiceNumber: 1,
           total: 1,
+          outstandingTotal: 1,
           createdAt: 1,
           client: {
             clientName: "$client.clientName",
@@ -189,11 +190,12 @@ const getCashieringOrderById = async (req: Request, res: Response) => {
  */
 
 const processCashieringOrder = async (req: Request, res: Response) => {
-  try {
-    const { orderId } = req.params;
-    const { cash = 0, card = 0, cheque = 0 } = req.body;
-    const createdBy = req.user?._id;
+  const { orderId } = req.params;
+  const { cash = 0, card = 0, cheque = 0 } = req.body;
+  const session = await Order.startSession();
+  session.startTransaction();
 
+  try {
     const paymentMethods = [
       { method: "cash", amount: cash },
       { method: "card", amount: card },
@@ -217,7 +219,7 @@ const processCashieringOrder = async (req: Request, res: Response) => {
         orderId: order._id,
         method: p.method,
         amount: p.amount,
-        createdBy,
+        createdBy: req.userId,
       }))
     );
 
@@ -234,7 +236,7 @@ const processCashieringOrder = async (req: Request, res: Response) => {
       item.outstandingPrice -= applyAmount;
       remaining -= applyAmount;
 
-      await item.save();
+      await item.save({ session });
     }
 
     const updatedItems = await OrderItem.find({ orderId });
@@ -243,13 +245,155 @@ const processCashieringOrder = async (req: Request, res: Response) => {
       0
     );
 
-    await order.save();
-
+    await order.save({ session });
+    await session.commitTransaction();
     responseHandler(res, 200, "Order processed successfully", "success");
   } catch (error: any) {
+    console.error(error);
+    await session.abortTransaction();
     throw new InternalServerError();
+  } finally {
+    session.endSession();
   }
 };
+
+/**
+ * Process multiple cashiering orders by applying payments to order items.
+ *
+ * @param {Request} req
+ * @param {Response} res
+ * @route POST /cashiering/multiple
+ * @access Private
+ * @returns {Promise<void>}
+ */
+// const processCashieringOrder = async (req: Request, res: Response) => {
+//   const {
+//     orderIds,
+//     cash = 0,
+//     card = 0,
+//     cheque = 0,
+//     mode = "automatic",
+//   } = req.body;
+
+//   // Validate inputs
+//   if (!Array.isArray(orderIds) || orderIds.length === 0) {
+//     throw new BadRequestError("At least one order ID is required");
+//   }
+
+//   if (!["manual", "automatic"].includes(mode)) {
+//     throw new BadRequestError("Mode must be 'manual' or 'automatic'");
+//   }
+
+//   const paymentMethods = [
+//     { method: "cash", amount: cash },
+//     { method: "card", amount: card },
+//     { method: "cheque", amount: cheque },
+//   ].filter((p) => p.amount > 0 && Number.isFinite(p.amount));
+
+//   if (paymentMethods.length === 0) {
+//     throw new BadRequestError("At least one valid payment method is required");
+//   }
+
+//   const totalPayment = paymentMethods.reduce((sum, p) => sum + p.amount, 0);
+//   if (totalPayment <= 0) {
+//     throw new BadRequestError("Total payment amount must be positive");
+//   }
+
+//   let session;
+//   try {
+//     // Start MongoDB session
+//     session = await Order.startSession();
+//     session.startTransaction();
+
+//     // Fetch orders
+//     let orders: IOrder[];
+//     if (mode === "manual") {
+//       // Manual mode: Use provided orderIds in the given order
+//       orders = await Order.find({ _id: { $in: orderIds } }).session(session);
+//       // Ensure orders are returned in the same order as orderIds
+//       orders = orderIds
+//         .map((id) => orders.find((o) => (o as any)._id.equals(id)))
+//         .filter((o): o is IOrder => !!o);
+//     } else {
+//       // Automatic mode: Fetch all pending orders, sorted by createdAt
+//       orders = await Order.find({
+//         _id: { $in: orderIds },
+//       })
+//         .sort({ createdAt: 1 })
+//         .session(session);
+//     }
+
+//     if (orders.length === 0) {
+//       throw new NotFoundError("No valid orders found");
+//     }
+
+//     // Insert payment records for each order
+//     const paymentRecords = [];
+//     let remainingPayment = totalPayment;
+
+//     for (const order of orders) {
+//       const orderPayment = paymentMethods.map((p) => ({
+//         orderId: order._id,
+//         method: p.method,
+//         amount: p.amount,
+//         createdBy: req.userId,
+//       }));
+//       paymentRecords.push(...orderPayment);
+//     }
+
+//     await OrderPayment.insertMany(paymentRecords, { session });
+
+//     // Process order items
+//     for (const order of orders) {
+//       if (remainingPayment <= 0) break;
+
+//       const orderItems = await OrderItem.find({
+//         orderId: order._id,
+//         outstandingPrice: { $gt: 0 },
+//       })
+//         .sort({ deliveryDate: 1, createdAt: 1 })
+//         .session(session);
+
+//       for (const item of orderItems) {
+//         if (remainingPayment <= 0) break;
+
+//         const applyAmount = Math.min(item.outstandingPrice, remainingPayment);
+//         item.outstandingPrice -= applyAmount;
+//         remainingPayment -= applyAmount;
+
+//         await item.save({ session });
+//       }
+
+//       // Update order's outstanding total
+//       order.outstandingTotal = orderItems.reduce(
+//         (sum, item) => sum + item.outstandingPrice,
+//         0
+//       );
+
+//       // Update order status if fully paid
+//       // if (order.outstandingTotal <= 0) {
+//       //   order.status = "completed";
+//       // }
+
+//       await order.save({ session });
+//     }
+
+//     // Commit transaction
+//     await session.commitTransaction();
+//     responseHandler(res, 200, "Orders processed successfully");
+//   } catch (error: any) {
+//     // Abort transaction on error
+//     if (session?.inTransaction()) {
+//       await session.abortTransaction();
+//     }
+
+//     throw new InternalServerError("Failed to process orders");
+//   } finally {
+//     if (session) {
+//       session.endSession();
+//     }
+//   }
+// };
 
 export {
   getAllCashieringOrders,
