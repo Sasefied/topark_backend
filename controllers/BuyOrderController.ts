@@ -3,8 +3,8 @@ import Inventory from "../schemas/Inventory";
 import { responseHandler } from "../utils/responseHandler";
 import { Types } from "mongoose";
 import mongoose from "mongoose";
-import Order from "../schemas/Order";
-import OrderItem from "../schemas/OrderItem";
+import Order, { IOrder } from "../schemas/Order";
+import OrderItem, { IOrderItem } from "../schemas/OrderItem";
 import CartItem from "../schemas/CartItem";
 import Cart from "../schemas/Cart";
 import { NotFoundError } from "../utils/errors";
@@ -70,7 +70,7 @@ const createBuyOrder = async (
     );
   }
 };
-
+interface IOrderWithItems extends IOrder, IOrderItem {}
 /**
  * Creates multiple buy orders in bulk.
  *
@@ -82,70 +82,74 @@ const createBulkBuyOrders = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { orders } = req.body;
+  const { orders }: { orders: IOrderWithItems[] } = req.body;
   const userId = req.userId;
 
   const session = await Order.startSession();
   session.startTransaction();
+
   try {
-    for (const order of orders) {
-      const {
-        clientId,
-        quantity,
-        price,
-        orderStatus,
-        deliveryDate,
-        inventoryId,
-      } = order;
-      console.log("userId", userId)
-      const existingOrder = await Order.findOne({
-        userId: new Types.ObjectId(userId),
-      }).session(session);
-      console.log("existingOrder", existingOrder)
-      let newOrder = null
-      if(existingOrder){
-        newOrder = await Order.findOneAndUpdate({
-          userId: new Types.ObjectId(userId),
-        }, {
+    // Calculate total and outstanding total
+    const totalAmount = orders.reduce(
+      (sum, order) => sum + order.quantity * order.price,
+      0
+    );
+
+    let existingOrder = await Order.findOne({
+      userId: new Types.ObjectId(userId),
+    }).session(session);
+
+    let newOrder;
+
+    if (existingOrder) {
+      newOrder = await Order.findOneAndUpdate(
+        { _id: existingOrder._id },
+        {
           $set: {
-            clientId,
-            total: (quantity * price) + existingOrder.total,
-            outstandingTotal: (quantity * price) + existingOrder.outstandingTotal,
-            orderStatus: orderStatus || "Pending",
-          }  
+            orderStatus: "Pending",
+          },
+          $inc: {
+            total: totalAmount,
+            outstandingTotal: totalAmount,
+          },
         },
-        {new: true}
-        )
-      }else {
-        newOrder = await Order.create({
-          userId: new Types.ObjectId(userId),
-          clientId,
-          total: quantity * price,
-          outstandingTotal: quantity * price,
-          orderStatus: orderStatus || "Pending",
-          invoiceNumber: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        })
-      }
-
-      const newOrderItem = new OrderItem({
-        orderId: newOrder?._id,
-        inventoryId: new Types.ObjectId(inventoryId),
-        quantity,
-        price,
-        outstandingPrice: quantity * price,
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
-      });
-
-      await newOrderItem.save({ session });
+        { new: true, session }
+      );
+    } else {
+      const createdOrders = await Order.create(
+        [
+          {
+            userId: new Types.ObjectId(userId),
+            clientId: orders[0].clientId,
+            total: totalAmount,
+            outstandingTotal: totalAmount,
+            orderStatus: orders[0].orderStatus || "Pending",
+            invoiceNumber: `INV-${Date.now()}-${Math.random()
+              .toString(36)
+              .substring(2, 9)}`,
+          },
+        ],
+        { session }
+      );
+      newOrder = createdOrders[0];
     }
 
+    // Prepare all order items
+    const orderItems = orders.map((order) => ({
+      orderId: newOrder?._id,
+      inventoryId: new Types.ObjectId(order.inventoryId.toString()),
+      quantity: order.quantity,
+      price: order.price,
+      outstandingPrice: order.quantity * order.price,
+      deliveryDate: order.deliveryDate
+        ? new Date(order.deliveryDate)
+        : new Date(),
+    }));
+
+    await OrderItem.insertMany(orderItems, { session });
+
     await session.commitTransaction();
-    responseHandler(
-      res,
-      201,
-      "Orders created successfully",
-      "success"
-    );
+    responseHandler(res, 201, "Orders created successfully", "success");
   } catch (error: any) {
     await session.abortTransaction();
     console.error("Error creating bulk buy orders:", {
@@ -164,6 +168,7 @@ const createBulkBuyOrders = async (
     session.endSession();
   }
 };
+
 
 /**
  * Retrieves all buy orders

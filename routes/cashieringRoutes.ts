@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   getAllCashieringOrders,
-  getCashieringOrderById,
+  getCashieringOrderByIds,
   processCashieringOrder,
   searchCashieringOrders,
 } from "../controllers/cashieringController";
@@ -9,9 +9,9 @@ import {
 const router = Router();
 
 router
-  .get("/", getAllCashieringOrders)
+  .get("/all-orders", getAllCashieringOrders)
   .get("/search/:query", searchCashieringOrders)
-  .get("/:orderId", getCashieringOrderById)
-  .post("/:orderId", processCashieringOrder);
+  .get("/", getCashieringOrderByIds)
+  .post("/process-order", processCashieringOrder);
 
 export default router;
