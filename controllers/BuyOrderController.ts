@@ -8,6 +8,7 @@ import OrderItem, { IOrderItem } from "../schemas/OrderItem";
 import CartItem from "../schemas/CartItem";
 import Cart from "../schemas/Cart";
 import { NotFoundError } from "../utils/errors";
+export interface IOrderWithItems extends IOrder, IOrderItem {}
 
 /**
  * Creates a single buy order.
@@ -20,10 +21,11 @@ const createBuyOrder = async (
   req: Request,
   res: Response
 ): Promise<void> => {
+  const { inventoryId, quantity, price, deliveryDate } = req.body;
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    const { inventoryId, quantity, price, deliveryDate } = req.body;
-
-    const inventory = await Inventory.findById(inventoryId);
+    const inventory = await Inventory.findById(inventoryId).session(session);
     if (!inventory) {
       throw new NotFoundError("Inventory not found");
     }
@@ -32,7 +34,7 @@ const createBuyOrder = async (
       { userId: req.userId },
       { $setOnInsert: { userId: req.userId } },
       { upsert: true, new: true }
-    );
+    ).session(session);
 
     const cartItem = await CartItem.findOneAndUpdate(
       { cartId: cart._id, inventoryId },
@@ -46,7 +48,9 @@ const createBuyOrder = async (
         },
       },
       { new: true, upsert: true }
-    );
+    ).session(session);
+
+    await session.commitTransaction();
 
     responseHandler(
       res,
@@ -56,6 +60,7 @@ const createBuyOrder = async (
       cartItem
     );
   } catch (error: any) {
+    await session.abortTransaction();
     console.error("Error creating buy order:", {
       message: error.message,
       stack: error.stack,
@@ -68,9 +73,11 @@ const createBuyOrder = async (
       error.message || "Internal server error",
       "error"
     );
+  } finally {
+    session.endSession();
   }
 };
-interface IOrderWithItems extends IOrder, IOrderItem {}
+
 /**
  * Creates multiple buy orders in bulk.
  *
@@ -340,6 +347,7 @@ const updateBuyOrder = async (
     await session.commitTransaction();
     responseHandler(res, 200, "Buy order updated successfully", "success");
   } catch (error: any) {
+    await session.abortTransaction();
     console.error("Error updating buy order:", {
       message: error.message,
       stack: error.stack,
