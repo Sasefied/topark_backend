@@ -32,7 +32,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
     clientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
-      required: true,
+      required: false,
     },
     grade: {
       type: String,

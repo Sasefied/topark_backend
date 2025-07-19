@@ -39,9 +39,9 @@ const buyOrderSchema: Schema<IBuyOrder> = new Schema(
     deliveryDate: { type: Date, required: true, default: Date.now },
     orderStatus: {
       type: String,
-      enum: ["Pending", "Requested", "Confirmed"],
+      enum: ["Pending", "Confirmed", "Delivered"],
       required: true,
-      default: "Requested",
+      default: "Pending",
     },
   },
   { timestamps: true }

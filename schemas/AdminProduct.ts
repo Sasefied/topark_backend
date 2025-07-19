@@ -3,6 +3,8 @@ import Color from "./adminProductColor";
 import Size from "./adminProductSize";
 
 export interface IAdminProduct extends Document {
+
+  id: string;
   productName: string;
   normalizedProductName?: string;
   productAlias?: string;
@@ -19,6 +21,7 @@ export interface IAdminProduct extends Document {
 }
 
 export const generateProductCode = async (
+  
   productName: string,
   variety?: string | null,
   retries = 5,

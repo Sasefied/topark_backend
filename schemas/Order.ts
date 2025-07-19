@@ -2,17 +2,16 @@ import mongoose, { Document, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 export interface IOrder extends Document {
-  _id: mongoose.Schema.Types.ObjectId;
   userId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
   invoiceNumber: string;
   total: number;
-  orderStatus: "Pending" | "Requested" | "Confirmed";
+  outstandingTotal: number;
+  orderStatus: string;
 }
 
 const orderSchema: Schema<IOrder> = new Schema(
   {
-    _id: { type: mongoose.Schema.Types.ObjectId, required: true, auto: true },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -30,16 +29,22 @@ const orderSchema: Schema<IOrder> = new Schema(
     total: {
       type: Number,
       required: true,
-      default: 0,
+    },
+    outstandingTotal: {
+      type: Number,
+      min: 0,
+      required: true,
     },
     orderStatus: {
       type: String,
-      enum: ["Pending", "Requested", "Confirmed"],
+      enum: ["Pending", "Confirmed", "Delivered"],
       required: true,
-      default: "Requested",
+      default: "Pending",
     },
   },
   { timestamps: true }
 );
+
 orderSchema.plugin(mongooseAggregatePaginate);
+
 export default mongoose.model<IOrder>("Order", orderSchema);
