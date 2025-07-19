@@ -114,6 +114,7 @@ const getAllCashieringOrders = async (req: Request, res: Response) => {
           totalAmount: 1,
           totalOutstanding: 1,
           totalItems: 1,
+          orderDate: { $max: "$orders.createdAt" },
         },
       },
     ]);
@@ -422,18 +423,22 @@ const getCashieringOrderByIds = async (req: Request, res: Response) => {
   }
 };
 
+
 const processCashieringOrder = async (req: Request, res: Response) => {
+  console.log("Received payload in processCashieringOrder:", JSON.stringify(req.body, null, 2));
+
   const {
     orderIds,
-    cash = 0,
-    card = 0,
-    cheque = 0,
+    payment = { cash: 0, card: 0, cheque: 0 },
     mode = "automatic",
   } = req.body;
 
+  // Destructure payment details
+  const { cash = 0, card = 0, cheque = 0 } = payment;
+
   // Validate inputs
   if (!Array.isArray(orderIds) || orderIds.length === 0) {
-    throw new BadRequestError("At least one order ID is required");
+    throw new BadRequestError(`At least one order ID is required. Received orderIds: ${JSON.stringify(orderIds)}`);
   }
 
   if (!["manual", "automatic"].includes(mode)) {
@@ -464,17 +469,14 @@ const processCashieringOrder = async (req: Request, res: Response) => {
     // Fetch orders
     let orders: IOrder[];
     if (mode === "manual") {
-      // Manual mode: Use provided orderIds in the given order
       orders = await Order.find({
         _id: { $in: orderIds },
         orderStatus: "Pending",
       }).session(session);
-      // Ensure orders are returned in the same order as orderIds
       orders = orderIds
         .map((id) => orders.find((o) => (o as any)._id.equals(id)))
         .filter((o): o is IOrder => !!o);
     } else {
-      // Automatic mode: Fetch all pending orders, sorted by createdAt
       orders = await Order.find({
         _id: { $in: orderIds },
         orderStatus: "Pending",
@@ -542,19 +544,16 @@ const processCashieringOrder = async (req: Request, res: Response) => {
     await session.commitTransaction();
     responseHandler(res, 200, "Orders processed successfully");
   } catch (error: any) {
-    // Abort transaction on error
     if (session?.inTransaction()) {
       await session.abortTransaction();
     }
-
-    throw new InternalServerError("Failed to process orders");
+    throw new InternalServerError(`Failed to process orders: ${error.message}`);
   } finally {
     if (session) {
       session.endSession();
     }
   }
 };
-
 export {
   getAllCashieringOrders,
   searchCashieringOrders,
