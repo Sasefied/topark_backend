@@ -8,6 +8,7 @@ export interface IOrderItem extends Document {
   price: number;
   outstandingPrice: number;
   deliveryDate: Date;
+  status: string;
 }
 
 const orderItemSchema: Schema<IOrderItem> = new Schema(
@@ -43,6 +44,12 @@ const orderItemSchema: Schema<IOrderItem> = new Schema(
       required: true,
       default: Date.now,
     },
+    status: {
+      type: String,
+      enum: ["Received Ok", "Has Issues", "Pending"],
+      required: true,
+      default: "Pending",
+    },
   },
   { timestamps: true }
 );
@@ -50,5 +57,3 @@ const orderItemSchema: Schema<IOrderItem> = new Schema(
 orderItemSchema.plugin(mongooseAggregatePaginate);
 
 export default mongoose.model<IOrderItem>("OrderItem", orderItemSchema);
-
-

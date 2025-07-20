@@ -530,11 +530,6 @@ const processCashieringOrder = async (req: Request, res: Response) => {
         0
       );
 
-      // Update order status if fully paid
-      if (order.outstandingTotal <= 0) {
-        order.orderStatus = "Delivered";
-      }
-
       await order.save({ session });
     }
 
