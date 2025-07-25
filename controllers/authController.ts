@@ -177,6 +177,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       );
       console.log("login - Team created:", { teamId: team._id, teamName: team.teamName });
     }
+// 
+    if (team && !user.teamId) {
+      await User.findByIdAndUpdate(
+        user._id,
+        { teamId: team._id },
+        { new: true }
+      );
+      console.log("login - Updated user teamId:", { userId: user._id, teamId: team._id });
+    }
 
     const payload = {
       iss: "ToprakApp",
@@ -232,97 +241,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-// export const login = async (req: Request, res: Response): Promise<void> => {
-//   const { email, password } = req.body;
-
-//   if (!email || !password) {
-//     responseHandler(res, 400, "Email and password are required");
-//     return;
-//   }
-
-//   // Validate email format
-//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-//   if (!emailRegex.test(email)) {
-//     responseHandler(res, 400, "Invalid email format");
-//     return;
-//   }
-
-//   try {
-//     const userDoc = await User.findOne({ email });
-//     if (!userDoc) {
-//       responseHandler(res, 401, "Invalid credentials");
-//       return;
-//     }
-
-//     const user = userDoc.toObject() as IUser;
-//     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) {
-//       responseHandler(res, 401, "Invalid credentials");
-//       return;
-//     }
-
-//     let team = await Team.findOne({ createdBy: user._id });
-//     if (!team && user.roles.includes("Admin")) {
-//       team = new Team({
-//         teamName: `${user.companyName} Team`,
-//         createdBy: user._id,
-//         members: [
-//           {
-//             user: user._id,
-//             email: user.email,
-//             roles: ["Admin"],
-//             status: "active",
-//           },
-//         ],
-//       });
-//       await team.save();
-//       await User.findByIdAndUpdate(
-//         user._id,
-//         { teamId: team._id },
-//         { new: true }
-//       );
-//     }
-
-//     const payload = {
-//       iss: "ToprakApp",
-//       sub: user._id.toString(),
-//       firstName: user.firstName,
-//       lastName: user.lastName,
-//       email: user.email,
-//       roles: user.roles,
-//       teamId: team ? String(team._id) : null,
-//     };
-
-//     const token = jwt.sign(payload, JWT_SECRET, {
-//       expiresIn: JWT_EXPIRES_IN,
-//     } as SignOptions);
-
-//     res.status(200).json({
-//       status: "success",
-//       data: {
-//         token,
-//         user: {
-//           firstName: user.firstName,
-//           lastName: user.lastName,
-//           email: user.email,
-//           roles: user.roles,
-//         },
-//         team: team
-//           ? {
-//               id: team._id,
-//               teamName: team.teamName,
-//               primaryUsage: team.primaryUsage || null,
-//             }
-//           : null,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Login Error:", error);
-//     responseHandler(res, 500, "Internal server error");
-//   }
-// };
-
-// 3.Forgot Password Controller: Controller to initiate password reset process by sending an email with reset link
 export const forgotPassword = async (
   req: Request,
   res: Response
