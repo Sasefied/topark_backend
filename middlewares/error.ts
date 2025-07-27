@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { BaseError } from "../utils/errors";
+import { removeUnusedMulterImageFilesOnError } from "../utils/helpers";
 
 const errorHandler = (
   err: Error,
@@ -8,6 +9,8 @@ const errorHandler = (
   next: NextFunction
 ): void => {
   console.error(err);
+
+  removeUnusedMulterImageFilesOnError(req);
 
   if (err instanceof BaseError) {
     res.status(err.statusCode).json({ message: err.message });
