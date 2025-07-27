@@ -4,14 +4,11 @@ import cors from "cors";
 import errorHandler from "./middlewares/error";
 import routes from "./api/router"; // Ensure this is a .ts file
 import { DB } from "./database/db";
-import multer from "multer";
 import { setupSwaggerDocs } from "./swagger";
 import orgRoutes from "./routes/orgRoutes";
 import { jwtAuth } from "./middlewares/jwtAuth";
 import adminUserRoutes from "./routes/TeamMemberRoutes";
 import hpp from "hpp";
-
-const upload = multer();
 
 const configureServer = async (app: Express): Promise<void> => {
   await DB.connect();
@@ -20,7 +17,6 @@ const configureServer = async (app: Express): Promise<void> => {
   app.use(express.urlencoded({ extended: true }));
   app.use(hpp());
   app.use(cors());
-  app.use(upload.array("files"));
 
   app.use("/api", routes);
   app.use(errorHandler);

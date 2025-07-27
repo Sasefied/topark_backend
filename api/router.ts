@@ -10,7 +10,8 @@ import inventoryRoutes from "../routes/inventoryRoutes";
 import buyProductRoutes from "../routes/buyProductRoute";
 import authMiddleware from "../middlewares/auth";
 import buyOrderRoutes from "../routes/buyOrderRoutes";
-
+import cashieringRoutes from "../routes/cashieringRoutes";
+import logisticRoutes from "../routes/logisticRoute";
 const router = express.Router();
 
 router.get("/", (_req, res) => {
@@ -29,5 +30,6 @@ router.use("/clients", ClientDetailsRoutes);
 router.use("/inventories", authMiddleware, inventoryRoutes);
 router.use("/buy-products", authMiddleware, buyProductRoutes);
 router.use("/buy-orders", authMiddleware, buyOrderRoutes);
-
+router.use("/cashiering", authMiddleware, cashieringRoutes);
+router.use("/logistics", authMiddleware, logisticRoutes);
 export default router;
