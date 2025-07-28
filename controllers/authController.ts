@@ -605,6 +605,21 @@ const updateUserProfile = asyncHandler(
   }
 );
 
+/**
+ * Delete user profile
+ *
+ * @async
+ * @param  {Request} req - Express request object
+ * @param  {Response} res - Express response object
+ * @route   DELETE /api/v1/auth/profile
+ * @access  Private
+ */
+const deleteUserProfile = asyncHandler(async (req: Request, res: Response) => {
+  await User.findByIdAndDelete(req.userId);
+
+  responseHandler(res, 200, "User profile deleted successfully");
+});
+
 export {
   login,
   signup,
@@ -612,4 +627,5 @@ export {
   resetPassword,
   getUserProfile,
   updateUserProfile,
+  deleteUserProfile,
 };
