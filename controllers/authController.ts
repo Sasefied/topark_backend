@@ -1,5 +1,5 @@
 // Imports and Configurations
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import User, { IUser } from "../schemas/User";
@@ -9,6 +9,10 @@ import Client from "../schemas/ClientDetails";
 import crypto from "crypto";
 import sendEmail from "../utils/mail";
 import Team from "../schemas/Team";
+import mongoose from "mongoose";
+import asyncHandler from "express-async-handler";
+import { BadRequestError, NotFoundError } from "../utils/errors";
+
 
 // JWT Secret and Expiration Configuration
 const JWT_SECRET: Secret = config.JWT_SECRET || "default-secret";
@@ -393,3 +397,145 @@ export const resetPassword = async (
     responseHandler(res, 500, "Internal server error");
   }
 };
+
+
+export const getUserProfile = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.userId;
+    console.log("getUserProfile - userId:", userId); // Debug log
+
+    // Validate userId
+    if (!userId) {
+      throw new BadRequestError("Missing user ID");
+    }
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new BadRequestError("Invalid user ID");
+    }
+
+    const user = await User.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(userId) } },
+      {
+        $lookup: {
+          from: "teams",
+          localField: "_id",
+          foreignField: "createdBy",
+          as: "teams",
+        },
+      },
+      {
+        $unwind: {
+          path: "$teams",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          email: 1,
+          firstName: 1,
+          // lastName: 1,
+          companyName:1,
+
+          teams: {
+            _id: 1,
+            teamName: 1,
+            primaryUsage: 1,
+          },
+        },
+      },
+    ]);
+
+    console.log("getUserProfile - Aggregation result:", user); // Debug log
+
+    if (user.length === 0) {
+      throw new NotFoundError("User not found");
+    }
+
+    responseHandler(
+      res,
+      200,
+      "User profile fetched successfully",
+      "success",
+      user // Return array to match frontend expectation
+    );
+  }
+);
+
+
+export const updateUserProfile = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const userId = req.userId;
+    const {
+      firstName,
+      email,
+      companyName,
+      oldPassword,
+      newPassword,
+      primaryUsage,
+      teamId,
+    } = req.body;
+
+    console.log("updateUserProfile - Request body:", req.body);
+
+    const session = await mongoose.startSession();
+    await session.startTransaction();
+    try {
+      const user = await User.findById(userId).session(session);
+      if (!user) {
+        throw new NotFoundError("User not found");
+      }
+
+      if (oldPassword) {
+        const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+        if (!isPasswordCorrect) {
+          throw new BadRequestError("Invalid old password");
+        }
+        user.password = newPassword;
+      }
+
+      user.firstName = firstName;
+      user.email = email;
+      user.companyName = companyName || user.companyName || "Default Company";
+
+      await user.save({ session });
+
+      if (primaryUsage) {
+        if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) {
+          throw new BadRequestError("Team ID is required");
+        }
+        const team = await Team.findOneAndUpdate(
+          { _id: teamId, createdBy: user._id },
+          { primaryUsage },
+          { session, new: true }
+        );
+        console.log("updateUserProfile - Team updated:", team); // Debug log
+        if (!team) {
+          throw new NotFoundError("Team not found for user");
+        }
+      }
+
+      await session.commitTransaction();
+      responseHandler(
+        res,
+        200,
+        "User profile updated successfully",
+        "success",
+        {
+          firstName,
+          email,
+          companyName,
+        }
+      );
+    } catch (error) {
+      await session.abortTransaction();
+      next(error);
+    } finally {
+      await session.endSession();
+    }
+  }
+);
+export const deleteUserProfile = asyncHandler(async (req: Request, res: Response) => {
+  await User.findByIdAndDelete(req.userId);
+
+  responseHandler(res, 200, "User profile deleted successfully");
+});

@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 import crypto from "crypto";
-
+import bcrypt from "bcryptjs";
 export interface IUser extends Document {
   _id: string;
   firstName: string;
@@ -19,6 +19,7 @@ export interface IUser extends Document {
   createdAt?: Date;
   updatedAt?: Date;
   createPasswordResetToken: () => string;
+   isPasswordCorrect: (password: string) => Promise<boolean>;
 }
 
 const userSchema: Schema<IUser> = new Schema(
@@ -46,12 +47,21 @@ const userSchema: Schema<IUser> = new Schema(
   { timestamps: true }
 );
 
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next();
+  this.password = await bcrypt.hash(this.password, 10);
+  next();
+})
+
 userSchema.methods.createPasswordResetToken = function (): string {
   const resetToken = crypto.randomBytes(32).toString("hex");
   this.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
   this.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 min
   return resetToken;
 };
+userSchema.methods.isPasswordCorrect = async function(password: string): Promise<boolean> {
+  return await bcrypt.compare(password, this.password);
+}
 
 const User = mongoose.model<IUser>("User", userSchema);
 export default User;
