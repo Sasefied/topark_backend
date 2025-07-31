@@ -1,5 +1,5 @@
-
 import mongoose, { Document, Schema } from "mongoose";
+import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 export interface IClient extends Document {
   _id: mongoose.Types.ObjectId;
@@ -55,6 +55,8 @@ const clientSchema = new Schema<IClient>(
   },
   { timestamps: true, versionKey: false }
 );
+
+clientSchema.plugin(mongooseAggregatePaginate);
 
 const Client = mongoose.model<IClient>("Client", clientSchema);
 export default Client;
