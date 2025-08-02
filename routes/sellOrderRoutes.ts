@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createSellOrder,
   deleteSellOrder,
+  getAllSellOrder,
   getLastSellOrder,
   getMostReorderedOrder,
   getSellOrderById,
@@ -12,6 +13,7 @@ import {
 import {
   createSellOrderValidator,
   deleteSellOrderValidator,
+  getAllSellOrderValidator,
   getSellOrderByIdValidator,
   searchAllClientsValidator,
   updateSellOrderValidator,
@@ -31,6 +33,12 @@ router
   .post("/", createSellOrderValidator(), validate, createSellOrder)
   .get("/last", getLastSellOrder)
   .get("/most-recorded", getMostReorderedOrder)
+  .get(
+    "/",
+    getAllSellOrderValidator(),
+    validate,
+    getAllSellOrder
+  )
   .get("/:id", getSellOrderByIdValidator(), validate, getSellOrderById)
   .put("/:id", updateSellOrderValidator(), validate, updateSellOrder)
   .delete("/:id", deleteSellOrderValidator(), validate, deleteSellOrder);

@@ -76,10 +76,26 @@ const deleteSellOrderValidator = () => {
   return [param("id").isMongoId().withMessage("Invalid order item ID")];
 };
 
+const getAllSellOrderValidator = () => {
+  return [
+    query("page")
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage("Page must be a positive integer")
+      .toInt(),
+    query("limit")
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage("Limit must be a positive integer between 1 and 100")
+      .toInt()
+  ]
+}
+
 export {
   searchAllClientsValidator,
   createSellOrderValidator,
   getSellOrderByIdValidator,
   updateSellOrderValidator,
   deleteSellOrderValidator,
+  getAllSellOrderValidator
 };

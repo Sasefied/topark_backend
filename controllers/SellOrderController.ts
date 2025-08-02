@@ -15,7 +15,7 @@ import Inventory from "../schemas/Inventory";
  * @async
  * @param  {Request} req - Express request object
  * @param  {Response} res - Express response object
- * @route   GET /api/v1/sell-orders/search
+ * @route   GET /api/sell-orders/search
  * @access  Private
  * @returns {Promise<void>}
  */
@@ -58,7 +58,7 @@ const searchAllClients = asyncHandler(
  * @async
  * @param  {Request} req - Express request object
  * @param  {Response} res - Express response object
- * @route   GET /api/v1/sell-orders/search
+ * @route   GET /api/sell-orders/search
  * @access  Private
  * @returns {Promise<void>}
  */
@@ -131,7 +131,7 @@ const searchProductCode = asyncHandler(
  * @param  {Request} req - Express request object
  * @param  {Response} res - Express response object
  * @param  {NextFunction} next - Express next function
- * @route   POST /api/v1/sell-orders
+ * @route   POST /api/sell-orders
  * @access  Private
  * @returns {Promise<void>}
  */
@@ -209,12 +209,77 @@ const createSellOrder = asyncHandler(
 );
 
 /**
+ * Get all sell orders
+ * 
+ * @async
+ * @param  {Request} req - Express request object
+ * @param  {Response} res - Express response object
+ * @route   GET /api/sell-orders/amend
+ * @access  Private
+ * @returns {Promise<void>}
+ */
+const getAllSellOrder = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const {page = 1, limit = 10} = req.query
+
+    const orderAggregate = SellOrder.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(req.userId),
+        }
+      },
+      {
+        $lookup: {
+          from: "clients",
+          localField: "clientId",
+          foreignField: "_id",
+          as: "client",
+        }
+      },
+      {
+        $unwind: {
+          path: "$client",
+          preserveNullAndEmptyArrays: true,
+        }
+      },
+      {
+        $sort: {
+          createdAt: -1,
+        }
+      },
+      {
+        $project: {
+          orderNumber: 1,
+          total: 1,
+          createdAt: 1,
+          client: {
+            _id: 1,
+            clientName: 1,
+          },
+        }
+      }
+    ])
+
+    const order = await (SellOrder as any).aggregatePaginate(orderAggregate, {
+      page,
+      limit,
+      customLabels: {
+        docs: "orders",
+        totalDocs: "totalOrders",
+      }
+    })
+
+    responseHandler(res, 200, "Orders fetched successfully", "success", order)
+  }
+)
+
+/**
  * Get sell order by id
  *
  * @async
  * @param  {Request} req - Express request object
  * @param  {Response} res - Express response object
- * @route   GET /api/v1/sell-orders/:id
+ * @route   GET /api/sell-orders/:id
  * @access  Private
  * @returns {Promise<void>}
  */
@@ -235,7 +300,7 @@ const getSellOrderById = asyncHandler(
  * @param  {Request} req - Express request object
  * @param  {Response} res - Express response object
  * @param  {NextFunction} next - Express next function
- * @route   PUT /api/v1/sell-orders/:id
+ * @route   PUT /api/sell-orders/:id
  * @access  Private
  * @returns {Promise<void>}
  */
@@ -293,7 +358,7 @@ const updateSellOrder = asyncHandler(
  * @async
  * @param  {Request} req - Express request object
  * @param  {Response} res - Express response object
- * @route   DELETE /api/v1/sell-orders/:id
+ * @route   DELETE /api/sell-orders/:id
  * @access  Private
  * @returns {Promise<void>}
  */
@@ -319,7 +384,7 @@ const deleteSellOrder = asyncHandler(
  * @async
  * @param  {Request} req - Express request object
  * @param  {Response} res - Express response object
- * @route   GET /api/v1/sell-orders/last
+ * @route   GET /api/sell-orders/last
  * @access  Private
  * @returns {Promise<void>}
  */
@@ -394,7 +459,7 @@ const getLastSellOrder = asyncHandler(async (req: Request, res: Response) => {
  * @async
  * @param  {Request} req - Express request object
  * @param  {Response} res - Express response object
- * @route   GET /api/v1/sell-orders/most-reordered
+ * @route   GET /api/sell-orders/most-reordered
  * @access  Private
  * @returns {Promise<void>}
  */
@@ -475,4 +540,5 @@ export {
   deleteSellOrder,
   getLastSellOrder,
   getMostReorderedOrder,
+  getAllSellOrder
 };
