@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { createCreditNote } from "../controllers/creditNoteController";
 import { createNoteValidator } from "../validators/creditNoteValidator";
-import { validate } from "uuid";
+import { validate } from "../middlewares/validate";
 
 const router = Router();
 

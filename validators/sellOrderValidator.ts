@@ -23,6 +23,7 @@ const searchAllClientsValidator = () => {
 const createSellOrderValidator = () => {
   return [
     body("clientId").isMongoId().withMessage("Invalid client ID"),
+    body("shipToday").optional().isBoolean().withMessage("Invalid shipToday"),
     body("orders")
       .isArray({ min: 1 })
       .withMessage("Orders must be a non-empty array"),

@@ -1,14 +1,17 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { AggregatePaginateModel, Document, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
+import { AvailableOrderStatuses, OrderStatusEnum } from "../constants";
 
 export interface ISellOrder extends Document {
   userId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
   orderNumber: number;
   total: number;
-  outstandingTotal: number;
-  status: string;
+  shipToday: boolean;
+  status: typeof OrderStatusEnum[keyof typeof OrderStatusEnum];
 }
+
+type SellOrderModel = AggregatePaginateModel<ISellOrder>
 
 const sellOrderSchema: Schema<ISellOrder> = new Schema(
   {
@@ -30,11 +33,16 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
       type: Number,
       required: true,
     },
+    shipToday: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
     status: {
       type: String,
-      enum: ["Order Printed", "Pallette Ready", "Order Shipped"],
+      enum: AvailableOrderStatuses,
       required: true,
-      default: "Order Printed",
+      default: OrderStatusEnum.ORDER_INITIATED,
     },
   },
   { timestamps: true }
@@ -42,4 +50,4 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
 
 sellOrderSchema.plugin(mongooseAggregatePaginate);
 
-export default mongoose.model<ISellOrder>("SellOrder", sellOrderSchema);
+export default mongoose.model<ISellOrder, SellOrderModel>("SellOrder", sellOrderSchema);
