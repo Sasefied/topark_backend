@@ -5,13 +5,34 @@ import {
   getAllOperationSellOrderItem,
   markAsShippedOperationSellOrder,
 } from "../controllers/operationController";
+import {
+  validateGetAllSellOrders,
+  validateGetSellOrderItems,
+  validateOrderItemId,
+} from "../validators/operationValidator";
+import { validate } from "../middlewares/validate";
 
 const router = Router();
 
 router
-  .get("/", getAllOperationSellOrder)
-  .get("/:id/items", getAllOperationSellOrderItem)
-  .put("/:id/confirm", confirmOperationSellOrderItem)
-  .put("/:id/mark-as-shipped", markAsShippedOperationSellOrder);
+  .get("/", validateGetAllSellOrders(), validate, getAllOperationSellOrder)
+  .get(
+    "/:id/items",
+    validateGetSellOrderItems(),
+    validate,
+    getAllOperationSellOrderItem
+  )
+  .put(
+    "/:id/confirm",
+    validateOrderItemId(),
+    validate,
+    confirmOperationSellOrderItem
+  )
+  .put(
+    "/:id/mark-as-shipped",
+    validateOrderItemId(),
+    validate,
+    markAsShippedOperationSellOrder
+  );
 
 export default router;
