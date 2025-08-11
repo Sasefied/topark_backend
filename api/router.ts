@@ -12,6 +12,7 @@ import authMiddleware from "../middlewares/auth";
 import buyOrderRoutes from "../routes/buyOrderRoutes";
 import cashieringRoutes from '../routes/cashieringRoutes'
 import sellOrderRoutes from "../routes/sellOrderRoutes";
+import creditNoteRoutes from "../routes/creditNoteRoutes"
 const router = express.Router();
 
 router.get("/", (_req, res) => {
@@ -32,4 +33,5 @@ router.use("/buy-products", authMiddleware, buyProductRoutes);
 router.use("/buy-orders", authMiddleware, buyOrderRoutes);
 router.use("/cashiering", authMiddleware, cashieringRoutes);
 router.use("/sell-orders", authMiddleware, sellOrderRoutes);
+router.use("/credit-notes", authMiddleware, creditNoteRoutes);
 export default router;

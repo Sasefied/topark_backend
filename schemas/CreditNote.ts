@@ -1,20 +1,26 @@
 import mongoose, { Document, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
-export interface ISellOrder extends Document {
+export interface ICreditNote extends Document {
   userId: mongoose.Schema.Types.ObjectId;
+  orderId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
+  startDate: Date;
+  endDate: Date;
   orderNumber: number;
   total: number;
-  outstandingTotal: number;
-  shippingToday: boolean;
 }
 
-const sellOrderSchema: Schema<ISellOrder> = new Schema(
+const creditNoteSchema: Schema<ICreditNote> = new Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+      required: true,
+    },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
       required: true,
     },
     clientId: {
@@ -22,19 +28,22 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
       ref: "Client",
       required: true,
     },
-    orderNumber: {
-      type: Number,
+    startDate: {
+      type: Date,
+      required: true,
+    },
+    endDate: {
+      type: Date,
       required: true,
     },
     total: {
       type: Number,
       required: true,
-    },
-    
+    }
   },
   { timestamps: true }
 );
 
-sellOrderSchema.plugin(mongooseAggregatePaginate);
+creditNoteSchema.plugin(mongooseAggregatePaginate);
 
-export default mongoose.model<ISellOrder>("SellOrder", sellOrderSchema);
+export default mongoose.model<ICreditNote>("CreditNote", creditNoteSchema);
