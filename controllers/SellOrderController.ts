@@ -106,7 +106,7 @@ const searchProductCode = asyncHandler(
 
 const createSellOrder = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { orderItems, clientId } = req.body;
+    const { orderItems, clientId, shipToday } = req.body;
     console.log("request body", req.body);
     const session = await mongoose.startSession();
     await session.startTransaction();
@@ -175,6 +175,7 @@ const createSellOrder = asyncHandler(
               clientId,
               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
               total,
+              shipToday
             },
           ],
           { session }
@@ -711,7 +712,7 @@ const getSellOrderById = asyncHandler(
 const updateSellOrder = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { id } = req.params;
-    const { orders } = req.body; // Changed to orders
+    const { orders } = req.body; // Array of { inventoryId, productCode, quantity, sellPrice }
     console.log("Request body:", JSON.stringify(req.body, null, 2));
 
     const session = await mongoose.startSession();
@@ -726,20 +727,29 @@ const updateSellOrder = asyncHandler(
       console.log("Found order:", existingOrder);
 
       console.log("Fetching existing order items for order ID:", id);
-      const existingItems = await SellOrderItem.find({ orderId: id }).session(
-        session
-      );
+      const existingItems = await SellOrderItem.find({ orderId: id }).session(session);
       console.log("Existing items:", existingItems);
 
+      // Step 1: Restore inventory for ALL existing items (add back quantities)
+      for (const existingItem of existingItems) {
+        const inventory = await Inventory.findById(existingItem.inventoryId).session(session);
+        if (inventory) {
+          inventory.qtyInStock += existingItem.quantity;
+          await inventory.save({ session });
+          console.log(`Restored ${existingItem.quantity} to inventory ${existingItem.inventoryId}`);
+        } else {
+          console.warn(`Inventory not found for existing item ${existingItem.inventoryId} during restore`);
+        }
+      }
+
+      // Step 2: Validate and subtract for new/updated items
+      let total = 0;
       for (const product of orders) {
-        // Changed to orders
         const { inventoryId, productCode, quantity, sellPrice } = product;
         console.log("Processing product:", product);
 
         console.log("Checking AdminProduct for productCode:", productCode);
-        const adminProduct = await AdminProduct.findOne({
-          productCode,
-        }).session(session);
+        const adminProduct = await AdminProduct.findOne({ productCode }).session(session);
         if (!adminProduct) {
           throw new BadRequestError(`Invalid product code: ${productCode}`);
         }
@@ -751,41 +761,32 @@ const updateSellOrder = asyncHandler(
           adminProductId: adminProduct._id,
         }).session(session);
         if (!inventory) {
-          throw new BadRequestError(
-            `Inventory not found for product ${productCode}`
-          );
+          throw new BadRequestError(`Inventory not found for product ${productCode}`);
         }
         console.log("Found Inventory:", inventory);
 
-        const existingItem = existingItems.find(
-          (item) => item.inventoryId.toString() === inventoryId
-        );
-        const oldQuantity = existingItem ? existingItem.quantity : 0;
-        const quantityDiff = quantity - oldQuantity;
-        console.log(
-          `Quantity diff for inventoryId ${inventoryId}: ${quantityDiff}`
-        );
-
-        if (inventory.qtyInStock < quantityDiff) {
-          throw new BadRequestError(
-            `Insufficient stock for product ${productCode}. Available: ${inventory.qtyInStock}, Required: ${quantityDiff}`
-          );
+        if (inventory.qtyInStock < quantity) {
+          throw new BadRequestError(`Insufficient stock for product ${productCode}. Available: ${inventory.qtyInStock}, Required: ${quantity}`);
         }
 
-        inventory.qtyInStock -= quantityDiff;
+        // Subtract new quantity
+        inventory.qtyInStock -= quantity;
         await inventory.save({ session });
         console.log("Updated Inventory:", inventory);
+
+        // Accumulate total
+        total += sellPrice * quantity;
       }
 
+      // Step 3: Delete existing order items
       console.log("Deleting existing order items for order ID:", id);
       await SellOrderItem.deleteMany({ orderId: id }).session(session);
       console.log("Deleted existing order items");
 
+      // Step 4: Insert new order items (without productCode, for consistency with create)
       const sellOrderItems = orders.map((product: any) => ({
-        // Changed to orders
         orderId: id,
         inventoryId: product.inventoryId,
-        productCode: product.productCode,
         quantity: product.quantity,
         sellPrice: product.sellPrice,
       }));
@@ -794,13 +795,8 @@ const updateSellOrder = asyncHandler(
       await SellOrderItem.insertMany(sellOrderItems, { session });
       console.log("Inserted new order items");
 
-      const total = orders.reduce(
-        // Changed to orders
-        (sum: number, item: any) => sum + item.sellPrice * item.quantity,
-        0
-      );
+      // Step 5: Update order total
       console.log("Calculated new total:", total);
-
       console.log("Updating order total...");
       await SellOrder.updateOne({ _id: id }, { $set: { total } }, { session });
       console.log("Updated order total");

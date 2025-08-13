@@ -1,12 +1,13 @@
 import { Router } from "express";
 // import { validate } from "uuid";
 import { createNoteValidator } from "../validators/creditNoteValidator";
-import { createCreditNote } from "../controllers/creditNoteController";
+import { createCreditNote, getSellOrderForDropdown } from "../controllers/creditNoteController";
 // import { validate } from "uuid";
+import { validate } from "../middlewares/validate";
 
 
 const router = Router();
-
-router.post("/", createNoteValidator(),  createCreditNote); //validate,
+router.get("/dropdown/:id", getSellOrderForDropdown);
+router.post("/", createNoteValidator(),  validate, createCreditNote); //validate,
 
 export default router;

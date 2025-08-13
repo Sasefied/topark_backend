@@ -1,1 +1,0 @@
-import authRoutes from "../routes/authRoutes";
