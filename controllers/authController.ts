@@ -1,5 +1,5 @@
 // Imports and Configurations
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import User, { IUser } from "../schemas/User";
@@ -9,6 +9,10 @@ import Client from "../schemas/ClientDetails";
 import crypto from "crypto";
 import sendEmail from "../utils/mail";
 import Team from "../schemas/Team";
+import mongoose from "mongoose";
+import asyncHandler from "express-async-handler";
+import { BadRequestError, NotFoundError } from "../utils/errors";
+
 
 // JWT Secret and Expiration Configuration
 const JWT_SECRET: Secret = config.JWT_SECRET || "default-secret";
@@ -177,6 +181,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       );
       console.log("login - Team created:", { teamId: team._id, teamName: team.teamName });
     }
+// 
+    if (team && !user.teamId) {
+      await User.findByIdAndUpdate(
+        user._id,
+        { teamId: team._id },
+        { new: true }
+      );
+      console.log("login - Updated user teamId:", { userId: user._id, teamId: team._id });
+    }
 
     const payload = {
       iss: "ToprakApp",
@@ -232,97 +245,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-// export const login = async (req: Request, res: Response): Promise<void> => {
-//   const { email, password } = req.body;
-
-//   if (!email || !password) {
-//     responseHandler(res, 400, "Email and password are required");
-//     return;
-//   }
-
-//   // Validate email format
-//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-//   if (!emailRegex.test(email)) {
-//     responseHandler(res, 400, "Invalid email format");
-//     return;
-//   }
-
-//   try {
-//     const userDoc = await User.findOne({ email });
-//     if (!userDoc) {
-//       responseHandler(res, 401, "Invalid credentials");
-//       return;
-//     }
-
-//     const user = userDoc.toObject() as IUser;
-//     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) {
-//       responseHandler(res, 401, "Invalid credentials");
-//       return;
-//     }
-
-//     let team = await Team.findOne({ createdBy: user._id });
-//     if (!team && user.roles.includes("Admin")) {
-//       team = new Team({
-//         teamName: `${user.companyName} Team`,
-//         createdBy: user._id,
-//         members: [
-//           {
-//             user: user._id,
-//             email: user.email,
-//             roles: ["Admin"],
-//             status: "active",
-//           },
-//         ],
-//       });
-//       await team.save();
-//       await User.findByIdAndUpdate(
-//         user._id,
-//         { teamId: team._id },
-//         { new: true }
-//       );
-//     }
-
-//     const payload = {
-//       iss: "ToprakApp",
-//       sub: user._id.toString(),
-//       firstName: user.firstName,
-//       lastName: user.lastName,
-//       email: user.email,
-//       roles: user.roles,
-//       teamId: team ? String(team._id) : null,
-//     };
-
-//     const token = jwt.sign(payload, JWT_SECRET, {
-//       expiresIn: JWT_EXPIRES_IN,
-//     } as SignOptions);
-
-//     res.status(200).json({
-//       status: "success",
-//       data: {
-//         token,
-//         user: {
-//           firstName: user.firstName,
-//           lastName: user.lastName,
-//           email: user.email,
-//           roles: user.roles,
-//         },
-//         team: team
-//           ? {
-//               id: team._id,
-//               teamName: team.teamName,
-//               primaryUsage: team.primaryUsage || null,
-//             }
-//           : null,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Login Error:", error);
-//     responseHandler(res, 500, "Internal server error");
-//   }
-// };
-
-// 3.Forgot Password Controller: Controller to initiate password reset process by sending an email with reset link
 export const forgotPassword = async (
   req: Request,
   res: Response
@@ -475,3 +397,145 @@ export const resetPassword = async (
     responseHandler(res, 500, "Internal server error");
   }
 };
+
+
+export const getUserProfile = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.userId;
+    console.log("getUserProfile - userId:", userId); // Debug log
+
+    // Validate userId
+    if (!userId) {
+      throw new BadRequestError("Missing user ID");
+    }
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new BadRequestError("Invalid user ID");
+    }
+
+    const user = await User.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(userId) } },
+      {
+        $lookup: {
+          from: "teams",
+          localField: "_id",
+          foreignField: "createdBy",
+          as: "teams",
+        },
+      },
+      {
+        $unwind: {
+          path: "$teams",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          email: 1,
+          firstName: 1,
+          // lastName: 1,
+          companyName:1,
+
+          teams: {
+            _id: 1,
+            teamName: 1,
+            primaryUsage: 1,
+          },
+        },
+      },
+    ]);
+
+    console.log("getUserProfile - Aggregation result:", user); // Debug log
+
+    if (user.length === 0) {
+      throw new NotFoundError("User not found");
+    }
+
+    responseHandler(
+      res,
+      200,
+      "User profile fetched successfully",
+      "success",
+      user // Return array to match frontend expectation
+    );
+  }
+);
+
+
+export const updateUserProfile = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const userId = req.userId;
+    const {
+      firstName,
+      email,
+      companyName,
+      oldPassword,
+      newPassword,
+      primaryUsage,
+      teamId,
+    } = req.body;
+
+    console.log("updateUserProfile - Request body:", req.body);
+
+    const session = await mongoose.startSession();
+    await session.startTransaction();
+    try {
+      const user = await User.findById(userId).session(session);
+      if (!user) {
+        throw new NotFoundError("User not found");
+      }
+
+      if (oldPassword) {
+        const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+        if (!isPasswordCorrect) {
+          throw new BadRequestError("Invalid old password");
+        }
+        user.password = newPassword;
+      }
+
+      user.firstName = firstName;
+      user.email = email;
+      user.companyName = companyName || user.companyName || "Default Company";
+
+      await user.save({ session });
+
+      if (primaryUsage) {
+        if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) {
+          throw new BadRequestError("Team ID is required");
+        }
+        const team = await Team.findOneAndUpdate(
+          { _id: teamId, createdBy: user._id },
+          { primaryUsage },
+          { session, new: true }
+        );
+        console.log("updateUserProfile - Team updated:", team); // Debug log
+        if (!team) {
+          throw new NotFoundError("Team not found for user");
+        }
+      }
+
+      await session.commitTransaction();
+      responseHandler(
+        res,
+        200,
+        "User profile updated successfully",
+        "success",
+        {
+          firstName,
+          email,
+          companyName,
+        }
+      );
+    } catch (error) {
+      await session.abortTransaction();
+      next(error);
+    } finally {
+      await session.endSession();
+    }
+  }
+);
+export const deleteUserProfile = asyncHandler(async (req: Request, res: Response) => {
+  await User.findByIdAndDelete(req.userId);
+
+  responseHandler(res, 200, "User profile deleted successfully");
+});

@@ -7,7 +7,6 @@ import sendEmail from "../utils/mail";
 import { responseHandler } from "../utils/responseHandler";
 import jwt, { SignOptions } from "jsonwebtoken";
 import mongoose from "mongoose";
-import { totalmem } from "os";
 
 type TeamRoles =
   | "Admin"
@@ -15,32 +14,46 @@ type TeamRoles =
   | "Seller"
   | "Cashier"
   | "Accountant"
-  | "Operations";
+  | "Operations"
+  | "StockMan";
 interface TeamMemberInput {
   email: string;
   roles: TeamRoles[];
 }
 
-
-
 // STEP 1: Save Team Name
 
-export const saveTeamName = async (req: Request, res: Response): Promise<void> => {
-  const { teamName } = req.body;
+export const saveTeamName = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const { teamName, teamId } = req.body;
+  console.log("team..", req.body);
   const userId = req.userId;
-  console.log("saveTeamName - Input:", { userId, teamName });
+  console.log("saveTeamName - Input:", { userId, teamName, teamId });
 
   if (!teamName || typeof teamName !== "string" || teamName.trim() === "") {
     console.log("saveTeamName - Error: Invalid team name");
-    responseHandler(res, 400, "Team name is required and must be a non-empty string");
+    responseHandler(
+      res,
+      400,
+      "Team name is required and must be a non-empty string"
+    );
     return;
   }
 
   try {
     const existingTeam = await Team.findOne({ teamName });
     if (existingTeam) {
-      console.log("saveTeamName - Error: Team name already exists", existingTeam);
-      responseHandler(res, 400, "Team name already exists. Please choose another.");
+      console.log(
+        "saveTeamName - Error: Team name already exists",
+        existingTeam
+      );
+      responseHandler(
+        res,
+        400,
+        "Team name already exists. Please choose another."
+      );
       return;
     }
 
@@ -52,27 +65,28 @@ export const saveTeamName = async (req: Request, res: Response): Promise<void> =
     }
 
     const team = new Team({
-      teamName,
-      createdBy: new mongoose.Types.ObjectId(userId),
-      members: [
-        {
-          user: userId,
-          email: creatorUser.email,
-          roles: ["Admin"],
-          status: "active",
-        },
-      ],
+      teamName: teamName.trim(),
+      teamId: teamId || new mongoose.Types.ObjectId().toString(),
+      addedOn: new Date().toLocaleDateString("en-US"),
+      createdBy: userId,
+      members: [],
     });
 
     const savedTeam = await team.save();
-    console.log("saveTeamName - Team saved:", JSON.stringify(savedTeam, null, 2));
+    console.log(
+      "saveTeamName - Team saved:",
+      JSON.stringify(savedTeam, null, 2)
+    );
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { teamId: savedTeam._id },
       { new: true }
     );
-    console.log("saveTeamName - Updated user:", JSON.stringify(updatedUser, null, 2));
+    console.log(
+      "saveTeamName - Updated user:",
+      JSON.stringify(updatedUser, null, 2)
+    );
 
     if (!updatedUser) {
       console.log("saveTeamName - Error: Failed to update user with teamId");
@@ -85,7 +99,17 @@ export const saveTeamName = async (req: Request, res: Response): Promise<void> =
       201,
       "Team name saved successfully. Proceed to set primary usage.",
       "success",
-      savedTeam
+      // savedTeam,
+      {
+        teamName: savedTeam.teamName,
+        teamId: savedTeam.id.toString(),
+        createdBy: savedTeam.createdBy,
+        members: savedTeam.members,
+        addedOn: savedTeam.addedOn,
+        createdAt: savedTeam.createdAt,
+        updatedAt: savedTeam.updatedAt,
+        _id: savedTeam.id.toString(),
+      }
     );
   } catch (error) {
     console.error("saveTeamName - Error:", error);
@@ -93,28 +117,37 @@ export const saveTeamName = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-
 // STEP 2: Update Primary Usage
 
-export const updatePrimaryUsage = async (req: Request, res: Response): Promise<void> => {
-  const { primaryUsage } = req.body;
+export const updatePrimaryUsage = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const { primaryUsage, teamId } = req.body;
   const userId = req.userId;
-  console.log("User ID:", userId);
-  console.log("Primary Usage:", primaryUsage);
+  console.log("updatePrimaryUsage - Input:", { userId, primaryUsage, teamId });
 
   const allowedValues = ["Only Buying", "Buying and Selling"];
   if (!primaryUsage || !allowedValues.includes(primaryUsage)) {
-    responseHandler(res, 400, "Primary usage must be one of: Only Buying, Buying and Selling");
+    responseHandler(
+      res,
+      400,
+      "Primary usage must be one of: Only Buying, Buying and Selling"
+    );
+    return;
+  }
+  if (!teamId || typeof teamId !== "string") {
+    responseHandler(res, 400, "Team ID is required");
     return;
   }
 
   try {
     const team = await Team.findOneAndUpdate(
-      { createdBy: userId },
+      { _id: teamId, createdBy: userId },
       { primaryUsage },
       { new: true, runValidators: true }
     );
-    console.log("Found team:", team);
+    console.log("updatePrimaryUsage - Found team:", team);
 
     if (!team) {
       responseHandler(res, 404, "Team not found");
@@ -126,19 +159,30 @@ export const updatePrimaryUsage = async (req: Request, res: Response): Promise<v
       200,
       "Primary usage set successfully. Proceed to add your team members.",
       "success",
-      team
+      {
+        teamId: team.id.toString(),
+        teamName: team.teamName,
+        primaryUsage: team.primaryUsage,
+        createdBy: team.createdBy,
+        members: team.members,
+        addedOn: team.addedOn,
+        createdAt: team.createdAt,
+        updatedAt: team.updatedAt,
+        _id: team.id.toString(),
+      }
     );
   } catch (error) {
-    console.error("Error updating primary usage:", error);
+    console.error("updatePrimaryUsage - Error:", error);
     responseHandler(res, 500, "Internal server error");
   }
 };
 
 // STEP 3: Add Team Members & Send Invite Email
+
 export const addTeamMembers = async (req: Request, res: Response) => {
   const userId = req.userId;
-  const { members } = req.body;
-
+  const { teamId, members } = req.body;
+  console.log("add", req.body);
   const validRoles: TeamRoles[] = [
     "Admin",
     "Buyer",
@@ -146,10 +190,14 @@ export const addTeamMembers = async (req: Request, res: Response) => {
     "Cashier",
     "Accountant",
     "Operations",
+    "StockMan",
   ];
 
   try {
     // Validate members payload
+    if (!teamId || typeof teamId !== "string") {
+      return responseHandler(res, 400, "Team ID is required");
+    }
     if (!Array.isArray(members) || members.length === 0) {
       return responseHandler(res, 400, "Members list is required");
     }
@@ -173,10 +221,14 @@ export const addTeamMembers = async (req: Request, res: Response) => {
       }
     }
 
-    // Find team based on user
-    const team = await Team.findOne({ createdBy: userId });
+    // Find team by teamId and ensure it belongs to the user
+    const team = await Team.findOne({ _id: teamId, createdBy: userId });
     if (!team) {
-      return responseHandler(res, 404, "Team not found for this user");
+      return responseHandler(
+        res,
+        404,
+        "Team not found or you are not authorized"
+      );
     }
 
     if (!req.userEmail) {
@@ -186,8 +238,6 @@ export const addTeamMembers = async (req: Request, res: Response) => {
         "User email is missing from request context"
       );
     }
-
-    const teamId = team._id as mongoose.Types.ObjectId;
 
     for (const member of members) {
       const existingMember = team.members?.find(
@@ -207,15 +257,16 @@ export const addTeamMembers = async (req: Request, res: Response) => {
           email: member.email,
           roles: member.roles,
           status: "pending",
+          teamId: team._id,
         };
 
         if (existingUser) {
           newMember.user = existingUser._id;
           if (
             !existingUser.teamId ||
-            existingUser.teamId.toString() !== teamId.toString()
+            existingUser.teamId.toString() !== teamId
           ) {
-            existingUser.teamId = teamId;
+            existingUser.teamId = new mongoose.Types.ObjectId(teamId);
             await existingUser.save();
           }
         }
@@ -225,6 +276,21 @@ export const addTeamMembers = async (req: Request, res: Response) => {
     }
 
     const updatedTeam = await team.save();
+
+    // Prepare response with member details
+    const addedMembers = members.map(
+      (member: TeamMemberInput, index: number) => {
+        const savedMember = updatedTeam.members?.find(
+          (m) => m.email === member.email
+        );
+        return {
+          _id: savedMember?._id?.toString() || `temp-${teamId}-${index}`,
+          email: member.email,
+          roles: member.roles,
+          status: savedMember?.status || "pending",
+        };
+      }
+    );
 
     for (const member of members as TeamMemberInput[]) {
       const token = jwt.sign(
@@ -237,15 +303,13 @@ export const addTeamMembers = async (req: Request, res: Response) => {
         { expiresIn: config.JWT_INVITE_EXPIRES_IN } as SignOptions
       );
 
-      const inviteLink = `${
-        config.MY_APP_FRONTEND_URL
-      }/invite/accept?token=${token}&email=${encodeURIComponent(member.email)}`;
+      const inviteLink = `${config.MY_APP_FRONTEND_URL}/invite/accept?token=${token}&email=${encodeURIComponent(member.email)}`;
 
       const rolesText = member.roles.join(", ");
 
       const html = `
         <p>Hello,</p>
-        <p>You’ve been invited to join the team as a <strong>${rolesText}</strong>.</p>
+        <p>You’ve been invited to join the team "${team.teamName}" as a <strong>${rolesText}</strong>.</p>
         <p>Please click the button below to set your name and password:</p>
         <a href="${inviteLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;" target="_blank">
           Accept Invitation
@@ -265,7 +329,7 @@ export const addTeamMembers = async (req: Request, res: Response) => {
       200,
       "Team members added successfully. Invitations have been sent.",
       "success",
-      updatedTeam
+      { members: addedMembers }
     );
   } catch (error: any) {
     console.error("Add Team Members Error:", error.message || error);
@@ -273,103 +337,24 @@ export const addTeamMembers = async (req: Request, res: Response) => {
   }
 };
 
-
-// 4. Accept the invitation came via email.
-// export const acceptInvitation = async (req: Request, res: Response) => {
-//   const { token, firstName, lastName, password, consentGiven } = req.body;
-
-//   if (!token || !firstName || !lastName || !password || !consentGiven) {
-//     return responseHandler(
-//       res,
-//       400,
-//       "All fields including consent are required"
-//     );
-//   }
-
-//   try {
-//     const decoded = jwt.verify(token, config.JWT_INVITE_SECRET) as {
-//       email: string;
-//       roles: string[];
-//       teamId: string;
-//     };
-
-//     // Fetch the team to get the team name as companyName
-//     const team = await Team.findById(decoded.teamId);
-//     if (!team) {
-//       return responseHandler(res, 400, "Team not found");
-//     }
-//     const companyName = team.teamName || "Unknown Company";
-
-//     let user = await User.findOne({ email: decoded.email });
-//     const hashedPassword = await bcrypt.hash(password, 10);
-
-//     if (!user) {
-//       user = new User({
-//         firstName,
-//         lastName,
-//         email: decoded.email,
-//         password: hashedPassword,
-//         roles: decoded.roles || [], 
-//         teamId: new mongoose.Types.ObjectId(decoded.teamId),
-//         companyName: companyName,
-//       });
-//       await user.save();
-//     } else {
-//       // Update existing user details
-//       user.firstName = firstName;
-//       user.lastName = lastName;
-//       user.password = hashedPassword;
-//       if (decoded.roles && Array.isArray(decoded.roles) && user) {
-//         // Add new roles that don't already exist
-//         decoded.roles.forEach((role) => {
-//           if (user && !user.roles.includes(role)) {
-//             user.roles.push(role);
-//           }
-//         });
-//       }
-//       if (user) {
-//         user.teamId = new mongoose.Types.ObjectId(decoded.teamId);
-//         user.companyName = companyName;
-//         await user.save();
-//       }
-//     }
-
-//     // Update team member status to "active"
-//     await Team.updateOne(
-//       { _id: decoded.teamId, "members.email": decoded.email },
-//       { $set: { "members.$.status": "active" } }
-//     );
-
-//     // Generate auth token for the user
-//     const authToken = jwt.sign(
-//       { id: user._id, email: user.email, teamId: user.teamId },
-//       config.JWT_SECRET,
-//       { expiresIn: "7d" }
-//     );
-
-//     responseHandler(
-//       res,
-//       200,
-//       "Invitation accepted and account activated/updated",
-//       "success",
-//       { token: authToken, user }
-//     );
-//   } catch (error) {
-//     return responseHandler(res, 400, "Invalid or expired invitation token");
-//   }
-// };
-
-
-
 export const acceptInvitation = async (req: Request, res: Response) => {
   const { token, firstName, lastName, password, consentGiven } = req.body;
 
   if (!token || !firstName || !lastName || !password || !consentGiven) {
-    return responseHandler(res, 400, "All fields including consent are required");
+    return responseHandler(
+      res,
+      400,
+      "All fields including consent are required"
+    );
   }
 
   try {
-    console.log("AcceptInvitation - Input:", { token, firstName, lastName, consentGiven });
+    console.log("AcceptInvitation - Input:", {
+      token,
+      firstName,
+      lastName,
+      consentGiven,
+    });
 
     // Verify JWT
     const decoded = jwt.verify(token, config.JWT_INVITE_SECRET) as {
@@ -386,7 +371,10 @@ export const acceptInvitation = async (req: Request, res: Response) => {
       return responseHandler(res, 400, "Team not found");
     }
     const companyName = team.teamName || "Unknown Company";
-    console.log("AcceptInvitation - Team found:", { teamId: team._id, teamName: companyName });
+    console.log("AcceptInvitation - Team found:", {
+      teamId: team._id,
+      teamName: companyName,
+    });
 
     // Validate password
     const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -405,7 +393,10 @@ export const acceptInvitation = async (req: Request, res: Response) => {
 
     // Find or create user
     let user = await User.findOne({ email: decoded.email });
-    console.log("AcceptInvitation - User lookup:", { email: decoded.email, userExists: !!user });
+    console.log("AcceptInvitation - User lookup:", {
+      email: decoded.email,
+      userExists: !!user,
+    });
 
     if (!user) {
       console.log("AcceptInvitation - Creating new user");
@@ -456,18 +447,25 @@ export const acceptInvitation = async (req: Request, res: Response) => {
     // Generate auth token
     console.log("AcceptInvitation - Generating auth token");
     const authToken = jwt.sign(
-      { id: user._id, email: user.email, teamId: user.teamId, roles: user.roles },
+      {
+        id: user._id,
+        email: user.email,
+        teamId: user.teamId,
+        roles: user.roles,
+      },
       config.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    responseHandler(
-      res,
-      200,
-      "Invitation accepted successfully",
-      "success",
-      { token: authToken, user: { id: user._id, email: user.email, roles: user.roles, teamId: user.teamId } }
-    );
+    responseHandler(res, 200, "Invitation accepted successfully", "success", {
+      token: authToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        roles: user.roles,
+        teamId: user.teamId,
+      },
+    });
   } catch (error: any) {
     console.error("AcceptInvitation - Error:", error.message, error.stack);
     if (error.name === "ValidationError") {

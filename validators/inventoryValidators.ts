@@ -26,11 +26,11 @@ const addStockOnInventoryValidator = () => {
       .custom(isObjectId)
       .withMessage("adminProductId must be a valid ObjectId"),
 
-    body("clientId")
-      .notEmpty()
-      .withMessage("clientId is required")
-      .custom(isObjectId)
-      .withMessage("clientId must be a valid ObjectId"),
+    // body("clientId")
+    //   .notEmpty()
+    //   .withMessage("clientId is required")
+    //   .custom(isObjectId)
+    //   .withMessage("clientId must be a valid ObjectId"),
 
     body("grade")
       .notEmpty()

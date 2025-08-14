@@ -1,20 +1,26 @@
 import mongoose, { Document, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
-export interface IOrder extends Document {
+export interface ICreditNote extends Document {
   userId: mongoose.Schema.Types.ObjectId;
+  orderId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
-  invoiceNumber: string;
+  startDate: Date;
+  endDate: Date;
+  orderNumber: number;
   total: number;
-  outstandingTotal: number;
-  orderStatus: string;
 }
 
-const orderSchema: Schema<IOrder> = new Schema(
+const creditNoteSchema: Schema<ICreditNote> = new Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+      required: true,
+    },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
       required: true,
     },
     clientId: {
@@ -22,29 +28,22 @@ const orderSchema: Schema<IOrder> = new Schema(
       ref: "Client",
       required: true,
     },
-    invoiceNumber: {
-      type: String,
+    startDate: {
+      type: Date,
+      required: true,
+    },
+    endDate: {
+      type: Date,
       required: true,
     },
     total: {
       type: Number,
       required: true,
-    },
-    outstandingTotal: {
-      type: Number,
-      min: 0,
-      required: true,
-    },
-    orderStatus: {
-      type: String,
-      enum: ["Pending", "Confirmed", "Delivered"],
-      required: true,
-      default: "Pending",
-    },
+    }
   },
   { timestamps: true }
 );
 
-orderSchema.plugin(mongooseAggregatePaginate);
+creditNoteSchema.plugin(mongooseAggregatePaginate);
 
-export default mongoose.model<IOrder>("Order", orderSchema);
+export default mongoose.model<ICreditNote>("CreditNote", creditNoteSchema);

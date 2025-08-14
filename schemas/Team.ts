@@ -1,3 +1,4 @@
+
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 export type TeamRoles =
@@ -5,36 +6,38 @@ export type TeamRoles =
   | "Seller"
   | "Operations"
   | "Cashier"
+  | "StockMan"
   | "Accountant"
   | "Admin";
 
 export type MemberStatus = "pending" | "active" | "inactive";
 
 export interface ITeamMember {
+  name: any;
+  user: string;
+  addedOn: string;
   _id?: Types.ObjectId;
-  user?: Types.ObjectId; // Added user reference
   email: string;
   roles: TeamRoles[];
   status?: MemberStatus;
 }
 
 export interface ITeam extends Document {
-  teamName: string;
+  teamName: string; // Changed to string
   primaryUsage?: "Only Buying" | "Buying and Selling";
   createdBy: Types.ObjectId;
-  // clientId: Types.ObjectId; // Reference to Client
   members?: ITeamMember[];
   createdAt?: Date;
   updatedAt?: Date;
+ addedOn: String  
 }
 
 const teamMemberSchema: Schema = new Schema(
   {
-    user: { type: Schema.Types.ObjectId, ref: "User" }, // Added user ref
-    email: { type: String, required: true }, // Removed unique constraint
+    email: { type: String, required: true },
     roles: {
       type: [String],
-      enum: ["Buyer", "Seller", "Operations", "Cashier", "Accountant", "Admin"],
+      enum: ["Buyer", "Seller", "Operations", "Cashier", "Accountant", "StockMan", "Admin"],
       required: true,
     },
     status: {
@@ -42,24 +45,21 @@ const teamMemberSchema: Schema = new Schema(
       enum: ["pending", "active", "inactive"],
       default: "pending",
     },
+    addedOn: { type: String },
   },
   { _id: true }
 );
 
 const teamSchema: Schema<ITeam> = new Schema(
   {
-    teamName: { type: String, required: true },
+    teamName: { type: String, required: true, trim: true }, // Changed to String
     primaryUsage: {
       type: String,
       enum: ["Only Buying", "Buying and Selling"],
     },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    // clientId: {
-    //   type: Schema.Types.ObjectId,
-    //   ref: "Client",
-    //   required: true,
-    // },
     members: [teamMemberSchema],
+    addedOn: { type: String },
   },
   {
     timestamps: true,
