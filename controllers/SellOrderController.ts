@@ -10,13 +10,129 @@ import mongoose from "mongoose";
 import Inventory from "../schemas/Inventory";
 
 
-interface SellOrderItemInput {
-  inventoryId: string;
-  productCode: string;
-  quantity: number;
-  sellPrice: number;
+interface PopulatedClient {
+  _id: string;
+  clientName: string;
 }
 
+interface LeanSellOrder extends Omit<ISellOrder, "clientId"> {
+  _id: string;
+  clientId: string;
+  client?: PopulatedClient;
+}
+
+const updateSellOrder = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const { id } = req.params;
+    const { orders } = req.body; // Array of { inventoryId, productCode, quantity, sellPrice }
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+
+    const session = await mongoose.startSession();
+    await session.startTransaction();
+
+    try {
+      console.log("Finding order with ID:", id);
+      const existingOrder = await SellOrder.findById(id).session(session);
+      if (!existingOrder) {
+        throw new BadRequestError("Order not found");
+      }
+      console.log("Found order:", existingOrder);
+
+      console.log("Fetching existing order items for order ID:", id);
+      const existingItems = await SellOrderItem.find({ orderId: id }).session(
+        session
+      );
+      console.log("Existing items:", existingItems);
+
+      // Step 1: Restore inventory for ALL existing items (add back quantities)
+      for (const existingItem of existingItems) {
+        const inventory = await Inventory.findById(
+          existingItem.inventoryId
+        ).session(session);
+        if (inventory) {
+          inventory.qtyInStock += existingItem.quantity;
+          await inventory.save({ session });
+          console.log(
+            `Restored ${existingItem.quantity} to inventory ${existingItem.inventoryId}`
+          );
+        } else {
+          console.warn(
+            `Inventory not found for existing item ${existingItem.inventoryId} during restore`
+          );
+        }
+      }
+
+      // Step 2: Validate new/updated items (without stock check)
+      let total = 0;
+      for (const product of orders) {
+        const { inventoryId, productCode, quantity, sellPrice } = product;
+        console.log("Processing product:", product);
+
+        console.log("Checking AdminProduct for productCode:", productCode);
+        const adminProduct = await AdminProduct.findOne({
+          productCode,
+        }).session(session);
+        if (!adminProduct) {
+          throw new BadRequestError(`Invalid product code: ${productCode}`);
+        }
+        console.log("Found AdminProduct:", adminProduct);
+
+        console.log("Checking Inventory for inventoryId:", inventoryId);
+        const inventory = await Inventory.findOne({
+          _id: inventoryId,
+          adminProductId: adminProduct._id,
+        }).session(session);
+        if (!inventory) {
+          throw new BadRequestError(
+            `Inventory not found for product ${productCode}`
+          );
+        }
+        console.log("Found Inventory:", inventory);
+
+        // Accumulate total
+        total += sellPrice * quantity;
+      }
+
+      // Step 3: Delete existing order items
+      console.log("Deleting existing order items for order ID:", id);
+      await SellOrderItem.deleteMany({ orderId: id }).session(session);
+      console.log("Deleted existing order items");
+
+      // Step 4: Insert new order items
+      const sellOrderItems = orders.map((product: any) => ({
+        orderId: id,
+        inventoryId: product.inventoryId,
+        quantity: product.quantity,
+        sellPrice: product.sellPrice,
+      }));
+      console.log("New order items:", sellOrderItems);
+
+      await SellOrderItem.insertMany(sellOrderItems, { session });
+      console.log("Inserted new order items");
+
+      // Step 5: Update order total
+      console.log("Calculated new total:", total);
+      console.log("Updating order total...");
+      await SellOrder.updateOne({ _id: id }, { $set: { total } }, { session });
+      console.log("Updated order total");
+
+      await session.commitTransaction();
+      console.log("Transaction committed");
+      responseHandler(res, 200, "Order updated successfully", "success", {
+        orderId: id,
+      });
+    } catch (error: any) {
+      console.error("Error in updateSellOrder:", error.message, error.stack);
+      await session.abortTransaction();
+      next(error);
+    } finally {
+      await session.endSession();
+      console.log("Session ended");
+    }
+  }
+);
+
+// Other functions (unchanged)
 const searchAllClients = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { page = 1, limit = 10, query } = req.query;
@@ -84,7 +200,7 @@ const searchProductCode = asyncHandler(
       },
       {
         $project: {
-          inventoryId: "$_id", // Return Inventory _id as inventoryId
+          inventoryId: "$_id",
           productCode: "$adminProduct.productCode",
           productName: "$adminProduct.productName",
           qtyInStock: 1,
@@ -115,7 +231,7 @@ const createSellOrder = asyncHandler(
       let total = 0;
       const sellOrderItems = [];
 
-      // Validate all items first
+      // Validate all items
       for (const order of orderItems) {
         const { inventoryId, productCode, quantity, sellPrice } = order;
 
@@ -127,7 +243,7 @@ const createSellOrder = asyncHandler(
           throw new BadRequestError(`Invalid product code: ${productCode}`);
         }
 
-        // 2. Verify inventory exists and has sufficient stock
+        // 2. Verify inventory exists
         const inventory = await Inventory.findOne({
           _id: inventoryId,
           adminProductId: product._id,
@@ -136,12 +252,6 @@ const createSellOrder = asyncHandler(
         if (!inventory) {
           throw new BadRequestError(
             `Inventory not found for product ${productCode}`
-          );
-        }
-
-        if (inventory.qtyInStock < quantity) {
-          throw new BadRequestError(
-            `Insufficient stock for product ${productCode}`
           );
         }
 
@@ -155,9 +265,15 @@ const createSellOrder = asyncHandler(
           sellPrice,
         });
 
-        // 5. Update inventory (will be committed if transaction succeeds)
+        // 5. Update inventory (allow negative stock)
         inventory.qtyInStock -= quantity;
         await inventory.save({ session });
+        if (inventory.qtyInStock < 0) {
+          console.warn(
+            `Inventory for ${productCode} is now negative: ${inventory.qtyInStock}`
+          );
+          // Optionally, flag the order for review or log for backorder
+        }
       }
 
       // Create the order
@@ -175,7 +291,14 @@ const createSellOrder = asyncHandler(
               clientId,
               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
               total,
-              shipToday
+              shipToday,
+              // Optionally, add a flag for orders with negative stock
+              hasNegativeStock: sellOrderItems.some(async (item) => {
+                const inventory = await Inventory.findById(
+                  item.inventoryId
+                ).session(session);
+                return inventory && inventory.qtyInStock < 0;
+              }),
             },
           ],
           { session }
@@ -192,7 +315,6 @@ const createSellOrder = asyncHandler(
 
       await session.commitTransaction();
 
-      // Return the created order in response
       const createdOrder = await SellOrder.findById(newOrder._id)
         .populate("clientId", "clientName")
         .lean();
@@ -212,127 +334,6 @@ const createSellOrder = asyncHandler(
     }
   }
 );
-
-
-// interface CreateSellOrderRequest extends Request {
-//   body: {
-//     orderItems: SellOrderItemInput[];
-//     clientId: string;
-//     shippingToday?: boolean;
-//   };
-//   userId?: string; 
-// }
-
-// const createSellOrder = asyncHandler(
-//   async (req: CreateSellOrderRequest, res: Response, next: NextFunction): Promise<void> => {
-//     const { orderItems, clientId, shippingToday } = req.body;
-//     console.log("Request body:", req.body);
-
-//     const session = await mongoose.startSession();
-//     await session.startTransaction();
-
-//     try {
-//       let total = 0;
-//       const sellOrderItems: any[] = [];
-
-//       // Validate all items first
-//       for (const order of orderItems) {
-//         const { inventoryId, productCode, quantity, sellPrice } = order;
-
-//         // 1. Verify product exists
-//         const product = await AdminProduct.findOne({ productCode }).session(session);
-//         if (!product) {
-//           throw new BadRequestError(`Invalid product code: ${productCode}`);
-//         }
-
-//         // 2. Verify inventory exists and has sufficient stock
-//         const inventory = await Inventory.findOne({
-//           _id: inventoryId,
-//           adminProductId: product._id,
-//         }).session(session);
-
-//         if (!inventory) {
-//           throw new BadRequestError(`Inventory not found for product ${productCode}`);
-//         }
-
-//         if (inventory.qtyInStock < quantity) {
-//           throw new BadRequestError(`Insufficient stock for product ${productCode}`);
-//         }
-
-//         // 3. Calculate total
-//         total += sellPrice * quantity;
-
-//         // 4. Prepare order item
-//         sellOrderItems.push({
-//           inventoryId,
-//           quantity,
-//           sellPrice,
-//           productCode, // Include productCode in SellOrderItem
-//         });
-
-//         // 5. Update inventory (will be committed if transaction succeeds)
-//         inventory.qtyInStock -= quantity;
-//         await inventory.save({ session });
-//       }
-
-//       // Create the order
-//       const lastOrderNumber = await SellOrder.findOne(
-//         {},
-//         { orderNumber: 1 },
-//         { sort: { createdAt: -1 } }
-//       ).session(session);
-
-//       const newOrder: ISellOrder = (
-//         await SellOrder.create(
-//           [
-//             {
-//               userId: req.userId,
-//               clientId,
-//               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
-//               total,
-//               outstandingTotal: total, // Initialize outstandingTotal to total
-//               shippingToday: shippingToday || false, // Include shippingToday
-//               orderItems: [], // Initialize empty array (populated in SellOrderItem)
-//             },
-//           ],
-//           { session }
-//         )
-//       )[0];
-
-//       // Create order items
-//       const sellOrderItemDocs = sellOrderItems.map((item) => ({
-//         ...item,
-//         orderId: newOrder._id,
-//       }));
-
-//       await SellOrderItem.insertMany(sellOrderItemDocs, { session });
-
-//       // Update SellOrder with orderItems references
-//       newOrder.orderItems = sellOrderItemDocs.map((item) => item._id);
-//       await newOrder.save({ session });
-
-//       await session.commitTransaction();
-
-//       // Return the created order in response
-//       const createdOrder = await SellOrder.findById(newOrder._id)
-//         .populate("clientId", "clientName")
-//         .populate({
-//           path: "orderItems",
-//           populate: { path: "inventoryId", select: "productCode qtyInStock" },
-//         })
-//         .lean();
-
-//       responseHandler(res, 200, "Order created successfully", "success", createdOrder);
-//     } catch (error) {
-//       await session.abortTransaction();
-//       next(error);
-//     } finally {
-//       await session.endSession();
-//     }
-//   }
-// );
-
-
 const getLastSellOrder = asyncHandler(async (req: Request, res: Response) => {
   const lastOrder = await SellOrder.aggregate([
     {
@@ -429,7 +430,7 @@ const getMostReorderedOrder = asyncHandler(
     const mostReorderedItems = await SellOrderItem.aggregate([
       {
         $match: {
-          inventoryId: { $exists: true, $type: "objectId" }, // Ensure inventoryId is a valid ObjectId
+          inventoryId: { $exists: true, $type: "objectId" },
         },
       },
       {
@@ -560,74 +561,172 @@ const getMostReorderedOrder = asyncHandler(
 
 const getAllSellOrder = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const { page = 1, limit = 10, search = '' } = req.query;
+    const { page = "1", limit = "10", search = "" } = req.query;
 
-    // Build the match stage with search query
-    const matchStage: any = {
-      userId: new mongoose.Types.ObjectId(req.userId),
-    };
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
 
-    if (search) {
-      matchStage.$or = [
-        { 'client.clientName': { $regex: search, $options: 'i' } },
-        { orderNumber: { $regex: search, $options: 'i' } },
-      ];
-    }
+    try {
+      const query: any = {};
+      if (search) {
+        // Convert orderNumber to string for regex matching
+        query.$or = [
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $toString: "$orderNumber" },
+                regex: search,
+                options: "i",
+              },
+            },
+          },
+          { "client.clientName": { $regex: search, $options: "i" } },
+        ];
+      }
 
-    const orderAggregate = SellOrder.aggregate([
-      {
-        $lookup: {
-          from: 'clients',
-          localField: 'clientId',
-          foreignField: '_id',
-          as: 'client',
-        },
-      },
-      {
-        $unwind: {
-          path: '$client',
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $match: matchStage,
-      },
-      {
-        $sort: {
-          createdAt: -1,
-        },
-      },
-      {
-        $project: {
-          orderNumber: 1,
-          total: 1,
-          createdAt: 1,
-          client: {
-            _id: 1,
-            clientName: 1,
+      const aggregate = SellOrder.aggregate([
+        {
+          $lookup: {
+            from: "clients",
+            localField: "clientId",
+            foreignField: "_id",
+            as: "client",
           },
         },
-      },
-    ]);
+        { $unwind: { path: "$client", preserveNullAndEmptyArrays: true } },
+        { $match: query },
+        { $sort: { createdAt: -1 } },
+      ]);
 
-    console.log('Aggregation pipeline:', JSON.stringify(orderAggregate.pipeline(), null, 2));
-    const order = await (SellOrder as any).aggregatePaginate(orderAggregate, {
-      page: Number(page),
-      limit: Number(limit),
-      customLabels: {
-        docs: 'orders',
-        totalDocs: 'totalOrders',
-      },
-    });
+      const options = {
+        page: pageNum,
+        limit: limitNum,
+        lean: true,
+      };
 
-    console.log('Response data:', order);
-    responseHandler(res, 200, 'Orders fetched successfully', 'success', order);
+      const result = await (SellOrder as any).aggregatePaginate(
+        aggregate,
+        options
+      );
+
+      const orders: LeanSellOrder[] = result.docs.map((doc: any) => ({
+        _id: doc._id.toString(),
+        userId: doc.userId.toString(),
+        clientId: doc.clientId.toString(),
+        client: doc.client
+          ? {
+              _id: doc.client._id.toString(),
+              clientName: doc.client.clientName,
+            }
+          : undefined,
+        orderNumber: doc.orderNumber,
+        total: doc.total,
+        shipToday: doc.shipToday,
+        status: doc.status,
+        createdAt: doc.createdAt,
+      }));
+
+      responseHandler(res, 200, "Orders fetched successfully", "success", {
+        orders,
+        totalPages: result.totalPages,
+        currentPage: result.page,
+        totalOrders: result.totalDocs,
+      });
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      throw new Error("Failed to fetch orders");
+    }
   }
 );
 
+// const getSellOrderById = asyncHandler(
+//   async (req: Request, res: Response): Promise<void> => {
+//     const { id } = req.params;
+
+//     const orders = await SellOrder.aggregate([
+//       { $match: { _id: new mongoose.Types.ObjectId(id) } },
+//       {
+//         $lookup: {
+//           from: "clients",
+//           localField: "clientId",
+//           foreignField: "_id",
+//           as: "client",
+//         },
+//       },
+//       { $unwind: { path: "$client", preserveNullAndEmptyArrays: true } },
+//       {
+//         $lookup: {
+//           from: "sellorderitems",
+//           localField: "_id",
+//           foreignField: "orderId",
+//           as: "orderItems",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "inventories",
+//           localField: "orderItems.inventoryId",
+//           foreignField: "_id",
+//           as: "inventory",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "adminproducts",
+//           localField: "inventory.adminProductId",
+//           foreignField: "_id",
+//           as: "adminProduct",
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 1,
+//           orderNumber: 1,
+//           total: 1,
+//           createdAt: 1,
+//           "client._id": 1,
+//           "client.clientName": 1,
+//           orderItems: {
+//             $map: {
+//               input: "$orderItems",
+//               as: "item",
+//               in: {
+//                 inventoryId: "$$item.inventoryId",
+//                 quantity: "$$item.quantity",
+//                 sellPrice: "$$item.sellPrice",
+//                 productCode: {
+//                   $arrayElemAt: [
+//                     "$adminProduct.productCode",
+//                     {
+//                       $indexOfArray: ["$inventory._id", "$$item.inventoryId"],
+//                     },
+//                   ],
+//                 },
+//               },
+//             },
+//           },
+//         },
+//       },
+//     ]);
+
+//     if (!orders || orders.length === 0) {
+//       throw new Error("Order not found");
+//     }
+
+//     responseHandler(
+//       res,
+//       200,
+//       "Order fetched successfully",
+//       "success",
+//       orders[0]
+//     );
+//   }
+// );
+// Already updated in your provided code
 const getSellOrderById = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
+    console.log(`Fetching order by ID: ${id}`);
 
     const orders = await SellOrder.aggregate([
       { $match: { _id: new mongoose.Types.ObjectId(id) } },
@@ -665,13 +764,7 @@ const getSellOrderById = asyncHandler(
         },
       },
       {
-        $project: {
-          _id: 1,
-          orderNumber: 1,
-          total: 1,
-          createdAt: 1,
-          "client._id": 1,
-          "client.clientName": 1,
+        $addFields: {
           orderItems: {
             $map: {
               input: "$orderItems",
@@ -693,12 +786,28 @@ const getSellOrderById = asyncHandler(
           },
         },
       },
+      {
+        $project: {
+          _id: 1,
+          orderNumber: 1,
+          total: 1,
+          createdAt: 1,
+          "client._id": 1,
+          "client.clientName": 1,
+          orderItems: 1,
+        },
+      },
     ]);
 
     if (!orders || orders.length === 0) {
-      throw new Error("Order not found");
+      console.warn(`Order not found for ID: ${id}`);
+      throw new BadRequestError("Order not found");
     }
 
+    console.log(
+      "getSellOrderById response:",
+      JSON.stringify(orders[0], null, 2)
+    );
     responseHandler(
       res,
       200,
@@ -708,115 +817,6 @@ const getSellOrderById = asyncHandler(
     );
   }
 );
-
-const updateSellOrder = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { id } = req.params;
-    const { orders } = req.body; // Array of { inventoryId, productCode, quantity, sellPrice }
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
-
-    const session = await mongoose.startSession();
-    await session.startTransaction();
-
-    try {
-      console.log("Finding order with ID:", id);
-      const existingOrder = await SellOrder.findById(id).session(session);
-      if (!existingOrder) {
-        throw new BadRequestError("Order not found");
-      }
-      console.log("Found order:", existingOrder);
-
-      console.log("Fetching existing order items for order ID:", id);
-      const existingItems = await SellOrderItem.find({ orderId: id }).session(session);
-      console.log("Existing items:", existingItems);
-
-      // Step 1: Restore inventory for ALL existing items (add back quantities)
-      for (const existingItem of existingItems) {
-        const inventory = await Inventory.findById(existingItem.inventoryId).session(session);
-        if (inventory) {
-          inventory.qtyInStock += existingItem.quantity;
-          await inventory.save({ session });
-          console.log(`Restored ${existingItem.quantity} to inventory ${existingItem.inventoryId}`);
-        } else {
-          console.warn(`Inventory not found for existing item ${existingItem.inventoryId} during restore`);
-        }
-      }
-
-      // Step 2: Validate and subtract for new/updated items
-      let total = 0;
-      for (const product of orders) {
-        const { inventoryId, productCode, quantity, sellPrice } = product;
-        console.log("Processing product:", product);
-
-        console.log("Checking AdminProduct for productCode:", productCode);
-        const adminProduct = await AdminProduct.findOne({ productCode }).session(session);
-        if (!adminProduct) {
-          throw new BadRequestError(`Invalid product code: ${productCode}`);
-        }
-        console.log("Found AdminProduct:", adminProduct);
-
-        console.log("Checking Inventory for inventoryId:", inventoryId);
-        const inventory = await Inventory.findOne({
-          _id: inventoryId,
-          adminProductId: adminProduct._id,
-        }).session(session);
-        if (!inventory) {
-          throw new BadRequestError(`Inventory not found for product ${productCode}`);
-        }
-        console.log("Found Inventory:", inventory);
-
-        if (inventory.qtyInStock < quantity) {
-          throw new BadRequestError(`Insufficient stock for product ${productCode}. Available: ${inventory.qtyInStock}, Required: ${quantity}`);
-        }
-
-        // Subtract new quantity
-        inventory.qtyInStock -= quantity;
-        await inventory.save({ session });
-        console.log("Updated Inventory:", inventory);
-
-        // Accumulate total
-        total += sellPrice * quantity;
-      }
-
-      // Step 3: Delete existing order items
-      console.log("Deleting existing order items for order ID:", id);
-      await SellOrderItem.deleteMany({ orderId: id }).session(session);
-      console.log("Deleted existing order items");
-
-      // Step 4: Insert new order items (without productCode, for consistency with create)
-      const sellOrderItems = orders.map((product: any) => ({
-        orderId: id,
-        inventoryId: product.inventoryId,
-        quantity: product.quantity,
-        sellPrice: product.sellPrice,
-      }));
-      console.log("New order items:", sellOrderItems);
-
-      await SellOrderItem.insertMany(sellOrderItems, { session });
-      console.log("Inserted new order items");
-
-      // Step 5: Update order total
-      console.log("Calculated new total:", total);
-      console.log("Updating order total...");
-      await SellOrder.updateOne({ _id: id }, { $set: { total } }, { session });
-      console.log("Updated order total");
-
-      await session.commitTransaction();
-      console.log("Transaction committed");
-      responseHandler(res, 200, "Order updated successfully", "success", {
-        orderId: id,
-      });
-    } catch (error: any) {
-      console.error("Error in updateSellOrder:", error.message, error.stack);
-      await session.abortTransaction();
-      next(error);
-    } finally {
-      await session.endSession();
-      console.log("Session ended");
-    }
-  }
-);
-
 const deleteSellOrder = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;

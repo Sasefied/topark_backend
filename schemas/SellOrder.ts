@@ -8,6 +8,7 @@ export interface ISellOrder extends Document {
   orderNumber: number;
   total: number;
   shipToday: boolean;
+  hasNegativeStock?: boolean;
   status: typeof OrderStatusEnum[keyof typeof OrderStatusEnum];
 }
 
@@ -38,6 +39,7 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
       required: true,
       default: false,
     },
+    hasNegativeStock: { type: Boolean, default: false }, 
     status: {
       type: String,
       enum: AvailableOrderStatuses,
