@@ -295,6 +295,7 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
     issue,
     productCompletelyDifferent,
   } = req.body;
+  
 
   const session = await mongoose.startSession();
   await session.startTransaction();
