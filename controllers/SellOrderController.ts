@@ -6,7 +6,7 @@ import { AdminProduct } from "../schemas/AdminProduct";
 import { BadRequestError } from "../utils/errors";
 import SellOrder, { ISellOrder } from "../schemas/SellOrder";
 import SellOrderItem from "../schemas/SellOrderItem";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import Inventory from "../schemas/Inventory";
 
 
@@ -585,6 +585,9 @@ const getAllSellOrder = asyncHandler(
       }
 
       const aggregate = SellOrder.aggregate([
+        {
+         $match: {userId: new Types.ObjectId(req.userId)}
+        },
         {
           $lookup: {
             from: "clients",
