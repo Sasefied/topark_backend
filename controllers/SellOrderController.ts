@@ -8,6 +8,7 @@ import SellOrder, { ISellOrder } from "../schemas/SellOrder";
 import SellOrderItem from "../schemas/SellOrderItem";
 import mongoose, { Types } from "mongoose";
 import Inventory from "../schemas/Inventory";
+import { OrderStatusEnum } from "../api/constants";
 
 
 interface PopulatedClient {
@@ -220,10 +221,131 @@ const searchProductCode = asyncHandler(
   }
 );
 
+
+
+// const createSellOrder = asyncHandler(
+//   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+//     const { orderItems, clientId, shipToday } = req.body;
+//     console.log("Request body:", JSON.stringify(req.body, null, 2));
+
+//     const session = await mongoose.startSession();
+//     await session.startTransaction();
+
+//     try {
+//       let total = 0;
+//       const sellOrderItems = [];
+
+//       // Validate all items and prepare order items
+//       for (const order of orderItems) {
+//         const { inventoryId, productCode, quantity, sellPrice } = order;
+
+//         // 1. Verify product exists
+//         const product = await AdminProduct.findOne({ productCode }).session(session);
+//         if (!product) {
+//           throw new BadRequestError(`Invalid product code: ${productCode}`);
+//         }
+
+//         // 2. Verify inventory exists
+//         const inventory = await Inventory.findOne({
+//           _id: inventoryId,
+//           adminProductId: product._id,
+//         }).session(session);
+
+//         if (!inventory) {
+//           throw new BadRequestError(`Inventory not found for product ${productCode}`);
+//         }
+
+//         // 3. Calculate total
+//         total += sellPrice * quantity;
+
+//         // 4. Prepare order item
+//         sellOrderItems.push({
+//           inventoryId,
+//           quantity,
+//           sellPrice,
+//         });
+
+//         // 5. Update inventory (allow negative stock)
+//         inventory.qtyInStock -= quantity;
+//         await inventory.save({ session });
+//         if (inventory.qtyInStock < 0) {
+//           console.warn(
+//             `Inventory for ${productCode} is now negative: ${inventory.qtyInStock}`
+//           );
+//           // Optionally, flag the order for review or log for backorder
+//         }
+//       }
+
+//       // Check for negative stock
+//       let hasNegativeStock = false;
+//       for (const item of sellOrderItems) {
+//         const inventory = await Inventory.findById(item.inventoryId).session(session);
+//         if (inventory && inventory.qtyInStock < 0) {
+//           hasNegativeStock = true;
+//           break;
+//         }
+//       }
+
+//       // Create the order
+//       const lastOrderNumber = await SellOrder.findOne(
+//         {},
+//         { orderNumber: 1 },
+//         { sort: { createdAt: -1 } }
+//       ).session(session);
+
+//       const newOrder: ISellOrder = (
+//         await SellOrder.create(
+//           [
+//             {
+//               userId: req.userId,
+//               clientId,
+//               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
+//               total,
+//               shipToday,
+//               hasNegativeStock,
+//             },
+//           ],
+//           { session }
+//         )
+//       )[0];
+
+//       // Create order items
+//       const sellOrderItemDocs = sellOrderItems.map((item) => ({
+//         ...item,
+//         orderId: newOrder._id,
+//       }));
+
+//       await SellOrderItem.insertMany(sellOrderItemDocs, { session });
+
+//       await session.commitTransaction();
+
+//       const createdOrder = await SellOrder.findById(newOrder._id)
+//         .populate("clientId", "clientName")
+//         .lean();
+
+//       responseHandler(
+//         res,
+//         200,
+//         "Order created successfully",
+//         "success",
+//         createdOrder
+//       );
+//     } catch (error) {
+//       console.error("Error in createSellOrder:", error);
+//       await session.abortTransaction();
+//       next(error);
+//     } finally {
+//       await session.endSession();
+//       console.log("Session ended");
+//     }
+//   }
+// );
+
 const createSellOrder = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { orderItems, clientId, shipToday } = req.body;
-    console.log("request body", req.body);
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+
     const session = await mongoose.startSession();
     await session.startTransaction();
 
@@ -231,14 +353,12 @@ const createSellOrder = asyncHandler(
       let total = 0;
       const sellOrderItems = [];
 
-      // Validate all items
+      // Validate all items and prepare order items
       for (const order of orderItems) {
         const { inventoryId, productCode, quantity, sellPrice } = order;
 
         // 1. Verify product exists
-        const product = await AdminProduct.findOne({ productCode }).session(
-          session
-        );
+        const product = await AdminProduct.findOne({ productCode }).session(session);
         if (!product) {
           throw new BadRequestError(`Invalid product code: ${productCode}`);
         }
@@ -250,9 +370,7 @@ const createSellOrder = asyncHandler(
         }).session(session);
 
         if (!inventory) {
-          throw new BadRequestError(
-            `Inventory not found for product ${productCode}`
-          );
+          throw new BadRequestError(`Inventory not found for product ${productCode}`);
         }
 
         // 3. Calculate total
@@ -276,7 +394,17 @@ const createSellOrder = asyncHandler(
         }
       }
 
-      // Create the order
+      // Check for negative stock
+      let hasNegativeStock = false;
+      for (const item of sellOrderItems) {
+        const inventory = await Inventory.findById(item.inventoryId).session(session);
+        if (inventory && inventory.qtyInStock < 0) {
+          hasNegativeStock = true;
+          break;
+        }
+      }
+
+      // Create the order with ORDER_PRINTED status
       const lastOrderNumber = await SellOrder.findOne(
         {},
         { orderNumber: 1 },
@@ -292,13 +420,8 @@ const createSellOrder = asyncHandler(
               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
               total,
               shipToday,
-              // Optionally, add a flag for orders with negative stock
-              hasNegativeStock: sellOrderItems.some(async (item) => {
-                const inventory = await Inventory.findById(
-                  item.inventoryId
-                ).session(session);
-                return inventory && inventory.qtyInStock < 0;
-              }),
+              hasNegativeStock,
+              status: OrderStatusEnum.ORDER_PRINTED, // Explicitly set status
             },
           ],
           { session }
@@ -308,14 +431,15 @@ const createSellOrder = asyncHandler(
       // Create order items
       const sellOrderItemDocs = sellOrderItems.map((item) => ({
         ...item,
-        orderId: newOrder._id,
+        orderId: newOrder.id,
+        status: OrderStatusEnum.ORDER_PRINTED, // Set order item status to ORDER_PRINTED
       }));
 
       await SellOrderItem.insertMany(sellOrderItemDocs, { session });
 
       await session.commitTransaction();
 
-      const createdOrder = await SellOrder.findById(newOrder._id)
+      const createdOrder = await SellOrder.findById(newOrder.id)
         .populate("clientId", "clientName")
         .lean();
 
@@ -327,13 +451,16 @@ const createSellOrder = asyncHandler(
         createdOrder
       );
     } catch (error) {
+      console.error("Error in createSellOrder:", error);
       await session.abortTransaction();
       next(error);
     } finally {
       await session.endSession();
+      console.log("Session ended");
     }
   }
 );
+
 const getLastSellOrder = asyncHandler(async (req: Request, res: Response) => {
   const lastOrder = await SellOrder.aggregate([
     {
@@ -642,90 +769,7 @@ const getAllSellOrder = asyncHandler(
   }
 );
 
-// const getSellOrderById = asyncHandler(
-//   async (req: Request, res: Response): Promise<void> => {
-//     const { id } = req.params;
 
-//     const orders = await SellOrder.aggregate([
-//       { $match: { _id: new mongoose.Types.ObjectId(id) } },
-//       {
-//         $lookup: {
-//           from: "clients",
-//           localField: "clientId",
-//           foreignField: "_id",
-//           as: "client",
-//         },
-//       },
-//       { $unwind: { path: "$client", preserveNullAndEmptyArrays: true } },
-//       {
-//         $lookup: {
-//           from: "sellorderitems",
-//           localField: "_id",
-//           foreignField: "orderId",
-//           as: "orderItems",
-//         },
-//       },
-//       {
-//         $lookup: {
-//           from: "inventories",
-//           localField: "orderItems.inventoryId",
-//           foreignField: "_id",
-//           as: "inventory",
-//         },
-//       },
-//       {
-//         $lookup: {
-//           from: "adminproducts",
-//           localField: "inventory.adminProductId",
-//           foreignField: "_id",
-//           as: "adminProduct",
-//         },
-//       },
-//       {
-//         $project: {
-//           _id: 1,
-//           orderNumber: 1,
-//           total: 1,
-//           createdAt: 1,
-//           "client._id": 1,
-//           "client.clientName": 1,
-//           orderItems: {
-//             $map: {
-//               input: "$orderItems",
-//               as: "item",
-//               in: {
-//                 inventoryId: "$$item.inventoryId",
-//                 quantity: "$$item.quantity",
-//                 sellPrice: "$$item.sellPrice",
-//                 productCode: {
-//                   $arrayElemAt: [
-//                     "$adminProduct.productCode",
-//                     {
-//                       $indexOfArray: ["$inventory._id", "$$item.inventoryId"],
-//                     },
-//                   ],
-//                 },
-//               },
-//             },
-//           },
-//         },
-//       },
-//     ]);
-
-//     if (!orders || orders.length === 0) {
-//       throw new Error("Order not found");
-//     }
-
-//     responseHandler(
-//       res,
-//       200,
-//       "Order fetched successfully",
-//       "success",
-//       orders[0]
-//     );
-//   }
-// );
-// Already updated in your provided code
 const getSellOrderById = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
