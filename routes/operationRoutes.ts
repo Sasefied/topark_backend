@@ -3,6 +3,7 @@ import {
   confirmOperationSellOrderItem,
   getAllOperationSellOrder,
   getAllOperationSellOrderItem,
+  getAllShippedOrders,
   markAsShippedOperationSellOrder,
 } from "../controllers/operationController";
 
@@ -10,7 +11,8 @@ const router = Router();
 
 router
   .get("/", getAllOperationSellOrder)
-  .get("/:id/items", getAllOperationSellOrderItem)
+  .get("/:orderId/items", getAllOperationSellOrderItem)
+  .get("/shipped", getAllShippedOrders)
   .put("/:id/confirm", confirmOperationSellOrderItem)
   .put("/:id/mark-as-shipped", markAsShippedOperationSellOrder);
 

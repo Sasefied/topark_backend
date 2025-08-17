@@ -44,7 +44,7 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
       type: String,
       enum: AvailableOrderStatuses,
       required: true,
-      default: OrderStatusEnum.ORDER_INITIATED,
+      default: OrderStatusEnum.ORDER_PRINTED,
     },
   },
   { timestamps: true }
