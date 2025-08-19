@@ -8,7 +8,138 @@ import SellOrder, { ISellOrder } from "../schemas/SellOrder";
 import SellOrderItem from "../schemas/SellOrderItem";
 import mongoose, { Types } from "mongoose";
 import Inventory from "../schemas/Inventory";
+import PDFDocument from "pdfkit";
+import fs from "fs";
+import path from "path";
+import sendEmail from "../utils/mail";
 
+interface InvoiceItem {
+  productName: string;
+  quantity: number;
+  sellPrice: number;
+}
+
+interface InvoiceData {
+  orderNumber: number;
+  clientName: string;
+  clientEmail?: string;
+  clientAddress?: string;
+  items: InvoiceItem[];
+  total: number;
+}
+
+const generateInvoice = async (data: InvoiceData): Promise<string> => {
+  const { orderNumber, clientName, clientEmail, clientAddress, items, total } =
+    data;
+
+  // Ensure invoices directory exists
+  const invoiceDir = path.join(__dirname, "../invoices");
+  if (!fs.existsSync(invoiceDir)) fs.mkdirSync(invoiceDir);
+
+  const filePath = path.join(invoiceDir, `invoice_${orderNumber}.pdf`);
+
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(fs.createWriteStream(filePath));
+
+  /** ---------- HEADER ---------- */
+  // Company Info
+  doc
+    .fontSize(20)
+    .text("Your Company Name", 50, 45, { align: "left" })
+    .fontSize(10)
+    .text("123 Business Street", 50, 70)
+    .text("City, State, ZIP", 50, 85)
+    .text("Phone: +91-1234567890", 50, 100)
+    .moveDown();
+
+  // Title
+  doc
+    .fontSize(24)
+    .text("INVOICE", 400, 45, { align: "right" })
+    .fontSize(12)
+    .text(`Invoice No: ${orderNumber}`, 400, 80, { align: "right" })
+    .text(`Date: ${new Date().toLocaleDateString()}`, 400, 95, {
+      align: "right",
+    })
+    .moveDown(2);
+
+  /** ---------- CLIENT INFO ---------- */
+  doc
+    .fontSize(14)
+    .fillColor("#444444")
+    .text("Bill To:", 50, 150)
+    .fontSize(12)
+    .fillColor("black")
+    .text(clientName, 50, 170)
+    .text(clientEmail || "", 50, 185)
+    .text(clientAddress || "", 50, 200)
+    .moveDown(2);
+
+  /** ---------- TABLE HEADER ---------- */
+  const tableTop = 250;
+  const itemSpacing = 30;
+
+  doc
+    .fontSize(12)
+    .fillColor("white")
+    .rect(50, tableTop, 500, 20)
+    .fill("#2c3e50")
+    .stroke()
+    .fillColor("white")
+    .text("Item", 55, tableTop + 5, { width: 200 })
+    .text("Qty", 280, tableTop + 5, { width: 90, align: "center" })
+    .text("Price", 370, tableTop + 5, { width: 90, align: "center" })
+    .text("Total", 460, tableTop + 5, { width: 90, align: "right" });
+
+  /** ---------- TABLE ROWS ---------- */
+  let y = tableTop + 30;
+  doc.fillColor("black");
+
+  items.forEach((item, i) => {
+    const rowY = y + i * itemSpacing;
+    doc
+      .fontSize(12)
+      .text(item.productName, 55, rowY, { width: 200 })
+      .text(item.quantity.toString(), 280, rowY, { width: 90, align: "center" })
+      .text(item.sellPrice.toFixed(2), 370, rowY, {
+        width: 90,
+        align: "center",
+      })
+      .text((item.quantity * item.sellPrice).toFixed(2), 460, rowY, {
+        width: 90,
+        align: "right",
+      });
+
+    // Row line
+    doc
+      .moveTo(50, rowY + 20)
+      .lineTo(550, rowY + 20)
+      .strokeColor("#cccccc")
+      .stroke();
+  });
+
+  /** ---------- TOTAL ---------- */
+  const totalY = tableTop + 30 + items.length * itemSpacing + 20;
+
+  doc
+    .fontSize(14)
+    .fillColor("#000")
+    .text("Grand Total:", 370, totalY, { width: 90, align: "center" })
+    .text(total.toFixed(2), 460, totalY, { width: 90, align: "right" });
+
+  /** ---------- FOOTER ---------- */
+  doc
+    .fontSize(12)
+    .fillColor("#555")
+    .text("Thank you for your business!", 50, 700, {
+      align: "center",
+      width: 500,
+    });
+
+  doc.end();
+
+  return filePath;
+};
 
 interface PopulatedClient {
   _id: string;
@@ -223,60 +354,42 @@ const searchProductCode = asyncHandler(
 const createSellOrder = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { orderItems, clientId, shipToday } = req.body;
-    console.log("request body", req.body);
     const session = await mongoose.startSession();
     await session.startTransaction();
 
     try {
       let total = 0;
-      const sellOrderItems = [];
+      const sellOrderItems: any[] = [];
 
-      // Validate all items
       for (const order of orderItems) {
         const { inventoryId, productCode, quantity, sellPrice } = order;
 
-        // 1. Verify product exists
         const product = await AdminProduct.findOne({ productCode }).session(
           session
         );
-        if (!product) {
+        if (!product)
           throw new BadRequestError(`Invalid product code: ${productCode}`);
-        }
 
-        // 2. Verify inventory exists
         const inventory = await Inventory.findOne({
           _id: inventoryId,
           adminProductId: product._id,
         }).session(session);
+        if (!inventory)
+          throw new BadRequestError(`Inventory not found for ${productCode}`);
 
-        if (!inventory) {
-          throw new BadRequestError(
-            `Inventory not found for product ${productCode}`
-          );
-        }
-
-        // 3. Calculate total
         total += sellPrice * quantity;
 
-        // 4. Prepare order item
         sellOrderItems.push({
           inventoryId,
           quantity,
           sellPrice,
+          productName: product.productName,
         });
 
-        // 5. Update inventory (allow negative stock)
         inventory.qtyInStock -= quantity;
         await inventory.save({ session });
-        if (inventory.qtyInStock < 0) {
-          console.warn(
-            `Inventory for ${productCode} is now negative: ${inventory.qtyInStock}`
-          );
-          // Optionally, flag the order for review or log for backorder
-        }
       }
 
-      // Create the order
       const lastOrderNumber = await SellOrder.findOne(
         {},
         { orderNumber: 1 },
@@ -292,40 +405,88 @@ const createSellOrder = asyncHandler(
               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
               total,
               shipToday,
-              // Optionally, add a flag for orders with negative stock
-              hasNegativeStock: sellOrderItems.some(async (item) => {
-                const inventory = await Inventory.findById(
-                  item.inventoryId
-                ).session(session);
-                return inventory && inventory.qtyInStock < 0;
-              }),
             },
           ],
           { session }
         )
       )[0];
 
-      // Create order items
       const sellOrderItemDocs = sellOrderItems.map((item) => ({
         ...item,
         orderId: newOrder._id,
       }));
-
       await SellOrderItem.insertMany(sellOrderItemDocs, { session });
 
       await session.commitTransaction();
 
-      const createdOrder = await SellOrder.findById(newOrder._id)
-        .populate("clientId", "clientName")
-        .lean();
+      const client = await Client.findById(clientId).select("clientName clientEmail deliveryAddress").session(session);
+      if (!client) {
+        throw new BadRequestError(`Client not found for ${clientId}`);
+      }
 
-      responseHandler(
-        res,
-        200,
-        "Order created successfully",
-        "success",
-        createdOrder
-      );
+      // ✅ Generate Invoice
+      const invoicePath = await generateInvoice({
+        orderNumber: newOrder.orderNumber,
+        clientName: client.clientName,
+        clientEmail: client.clientEmail,
+        clientAddress: client.deliveryAddress,
+        items: sellOrderItems,
+        total,
+      });
+
+      const invoiceUrl = `${req.protocol}://${req.hostname}/${`invoice_${newOrder.orderNumber}.pdf`}`;
+
+      newOrder.invoiceUrl = invoiceUrl;
+      await newOrder.save();
+
+      await sendEmail({
+        //to: client.clientEmail,
+        to: "saifmd9536@gmail.com",
+        subject: `Invoice for Order #${newOrder.orderNumber}`,
+        html: `
+          <p>Dear ${client.clientName},</p>
+          <p>Thank you for your order! Please find your invoice for Order #${newOrder.orderNumber} attached.</p>
+
+          <h3>Order Details:</h3>
+          <table border="1" cellspacing="0" cellpadding="6">
+          <thead>
+          <tr>
+            <th>Product</th>
+            <th>Quantity</th>
+            <th>Sell Price</th>
+            <th>Subtotal</th>
+          </tr>
+          </thead>
+          <tbody>
+          ${sellOrderItems
+            .map(
+              (item) =>
+                `<tr>
+              <td>${item.productName}</td>
+              <td>${item.quantity}</td>
+              <td>${item.sellPrice}</td>
+              <td>${(item.quantity * item.sellPrice).toFixed(2)}</td>
+            </tr>`
+            )
+            .join("")}
+          <tr>
+            <td colspan="3"><strong>Total</strong></td>
+            <td><strong>${total.toFixed(2)}</strong></td>
+          </tr>
+          </tbody>
+          </table>
+          <p>Shipping: ${shipToday ? "Ship today" : "Standard shipping"}</p>
+
+          <p>If you have any questions, please reply to this email.</p>
+          <p>Best regards,<br/>Your Company Name</p>
+        `,
+        attachments: [{
+          filename: `invoice-${newOrder.orderNumber}.pdf`,
+          path: invoicePath
+        }],
+      });
+
+      responseHandler(res, 200, "Order created successfully", "success");
     } catch (error) {
       await session.abortTransaction();
       next(error);
@@ -334,6 +495,7 @@ const createSellOrder = asyncHandler(
     }
   }
 );
+
 const getLastSellOrder = asyncHandler(async (req: Request, res: Response) => {
   const lastOrder = await SellOrder.aggregate([
     {
@@ -586,7 +748,7 @@ const getAllSellOrder = asyncHandler(
 
       const aggregate = SellOrder.aggregate([
         {
-         $match: {userId: new Types.ObjectId(req.userId)}
+          $match: { userId: new Types.ObjectId(req.userId) },
         },
         {
           $lookup: {

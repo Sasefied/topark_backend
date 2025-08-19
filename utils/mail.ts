@@ -5,6 +5,7 @@ const sendEmail = async (options: {
   to: string;
   subject: string;
   html: string;
+  attachments?: { filename: string; path: string }[];
 }): Promise<boolean> => {
   try {
     const transporter = nodemailer.createTransport({
@@ -16,13 +17,16 @@ const sendEmail = async (options: {
       },
     });
 
-    const { to, subject, html } = options;
+    const { to, subject, html, attachments } = options;
 
     const mail = {
       from: config.SMTP_USER,
       to,
       subject,
       html,
+      ...(attachments
+        ? { attachments: attachments.map((attachment) => ({ filename: attachment.filename, path: attachment.path  })) }
+        : {}),
     };
 
     await transporter.sendMail(mail);
