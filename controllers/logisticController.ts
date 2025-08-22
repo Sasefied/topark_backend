@@ -1,15 +1,19 @@
-import { Request, Response } from "express";
+import asyncHandler from "express-async-handler";
+import { NextFunction, Request, Response } from "express";
 import { responseHandler } from "../utils/responseHandler";
 import Order from "../schemas/Order";
 import {
   BadRequestError,
   BaseError,
   InternalServerError,
+  NotFoundError,
 } from "../utils/errors";
 import ReportedIssue from "../schemas/ReportedIssue";
 import mongoose from "mongoose";
 import { getStaticFilePath } from "../utils/helpers";
 import OrderItem from "../schemas/OrderItem";
+import { OrderItemStatusEnum } from "../api/constants";
+import Inventory from "../schemas/Inventory";
 
 /**
  * Get all logistic orders
@@ -295,7 +299,6 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
     issue,
     productCompletelyDifferent,
   } = req.body;
-  
 
   const session = await mongoose.startSession();
   await session.startTransaction();
@@ -330,7 +333,7 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
         { _id: orderItemId },
         {
           $set: {
-            status: "Has Issues",
+            status: OrderItemStatusEnum.HAS_ISSUES,
           },
         }
       ).session(session),
@@ -359,28 +362,72 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
  * @throws {InternalServerError} - Throws an error if updating the order item fails.
  */
 
-const receivedOkLogisticOrderItem = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  const { orderItemId } = req.params;
-
-  try {
-    await OrderItem.updateOne(
-      { _id: orderItemId },
-      {
-        $set: {
-          status: "Received Ok",
-        },
+const receivedOkLogisticOrderItem = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const { orderItemId } = req.params;
+    const session = await mongoose.startSession();
+    await session.startTransaction();
+    try {
+      const orderItem = await OrderItem.findById(orderItemId).session(session);
+      if (!orderItem) {
+        throw new NotFoundError("Order item not found");
       }
-    );
 
-    responseHandler(res, 200, "Order item marked as received ok", "success");
-  } catch (error: any) {
-    console.error("Error marking order item as received ok:", error);
-    throw new InternalServerError();
+      if (orderItem.status === OrderItemStatusEnum.RECEIVE_OK) {
+        throw new BadRequestError(
+          "Order item is already marked as received ok"
+        );
+      }
+
+      const inventory = await Inventory.findById(orderItem.inventoryId).session(
+        session
+      );
+      if (!inventory) {
+        throw new NotFoundError("Inventory not found");
+      }
+
+      console.log(inventory);
+
+      await Inventory.create(
+        [
+          {
+            userId: req.userId,
+            clientId: inventory.clientId,
+            adminProductId: inventory.adminProductId,
+            grade: inventory.grade,
+            pricePerUnit: orderItem.price,
+            qtyInStock: orderItem.quantity,
+            qtyIncoming: orderItem.quantity,
+            sourceCountry: inventory.sourceCountry,
+            ccy: inventory.ccy,
+            buyingPrice: orderItem.price,
+            tradingPrice: orderItem.price,
+          },
+        ],
+        { session }
+      );
+
+      await OrderItem.updateOne(
+        { _id: orderItemId },
+        {
+          $set: {
+            status: OrderItemStatusEnum.RECEIVE_OK,
+          },
+        }
+      ).session(session);
+
+      await session.commitTransaction();
+
+      responseHandler(res, 200, "Order item marked as received ok", "success");
+    } catch (error: any) {
+      console.error("Error marking order item as received ok:", error);
+      await session.abortTransaction();
+      next(error);
+    } finally {
+      await session.endSession();
+    }
   }
-}
+);
 
 /**
  * Fetches all logistic ordered items for a given order ID.

@@ -5,14 +5,15 @@ import { AvailableOrderStatuses, OrderStatusEnum } from "../api/constants";
 export interface ISellOrder extends Document {
   userId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
+  invoiceUrl: string;
   orderNumber: number;
   total: number;
   shipToday: boolean;
   hasNegativeStock?: boolean;
-  status: typeof OrderStatusEnum[keyof typeof OrderStatusEnum];
+  status: (typeof OrderStatusEnum)[keyof typeof OrderStatusEnum];
 }
 
-type SellOrderModel = AggregatePaginateModel<ISellOrder>
+type SellOrderModel = AggregatePaginateModel<ISellOrder>;
 
 const sellOrderSchema: Schema<ISellOrder> = new Schema(
   {
@@ -25,6 +26,9 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
       required: true,
+    },
+    invoiceUrl: {
+      type: String,
     },
     orderNumber: {
       type: Number,
@@ -39,12 +43,12 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
       required: true,
       default: false,
     },
-    hasNegativeStock: { type: Boolean, default: false }, 
+    hasNegativeStock: { type: Boolean, default: false },
     status: {
       type: String,
       enum: AvailableOrderStatuses,
       required: true,
-      default: OrderStatusEnum.ORDER_INITIATED,
+      default: OrderStatusEnum.ORDER_PRINTED,
     },
   },
   { timestamps: true }
@@ -52,4 +56,7 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
 
 sellOrderSchema.plugin(mongooseAggregatePaginate);
 
-export default mongoose.model<ISellOrder, SellOrderModel>("SellOrder", sellOrderSchema);
+export default mongoose.model<ISellOrder, SellOrderModel>(
+  "SellOrder",
+  sellOrderSchema
+);

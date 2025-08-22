@@ -34,9 +34,6 @@
 
 // export default configureServer;
 
-
-
-
 import express, { Express } from "express";
 import "express-async-errors";
 import cors from "cors";
@@ -56,6 +53,7 @@ const configureServer = async (app: Express): Promise<void> => {
   app.use(express.urlencoded({ extended: true }));
   app.use(hpp());
   app.use(cors());
+  app.use(express.static("invoices"));
 
   app.use("/api", routes);
   app.use(errorHandler);
