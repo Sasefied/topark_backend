@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
+import { AvailableOrderItemStatuses, OrderItemStatusEnum } from "../api/constants";
 
 export interface IOrderItem extends Document {
   orderId: mongoose.Schema.Types.ObjectId;
@@ -8,6 +9,7 @@ export interface IOrderItem extends Document {
   price: number;
   outstandingPrice: number;
   deliveryDate: Date;
+  status: (typeof OrderItemStatusEnum)[keyof typeof OrderItemStatusEnum];
 }
 
 const orderItemSchema: Schema<IOrderItem> = new Schema(
@@ -43,6 +45,11 @@ const orderItemSchema: Schema<IOrderItem> = new Schema(
       required: true,
       default: Date.now,
     },
+    status: {
+      type: String,
+      enum: AvailableOrderItemStatuses,
+      default: null,
+    }
   },
   { timestamps: true }
 );
