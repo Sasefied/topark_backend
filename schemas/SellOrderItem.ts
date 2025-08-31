@@ -10,6 +10,7 @@ export interface ISellOrderItem extends Document {
   inventoryId: mongoose.Schema.Types.ObjectId;
   quantity: number;
   sellPrice: number;
+  outstandingPrice: number;
   status: (typeof SellOrderItemStatusEnum)[keyof typeof SellOrderItemStatusEnum];
 }
 
@@ -33,6 +34,11 @@ const sellOrderItemSchema: Schema<ISellOrderItem> = new Schema(
       default: 0,
     },
     sellPrice: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    outstandingPrice: {
       type: Number,
       required: true,
       default: 0,
