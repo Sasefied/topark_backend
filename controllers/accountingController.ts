@@ -310,9 +310,9 @@ const receivePayment = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
+    await session.startTransaction();
     const orders = await Promise.all(
       sellOrderIds.map((id: string) => SellOrder.findById(id).session(session))
     );
@@ -384,6 +384,7 @@ const receivePayment = asyncHandler(async (req: Request, res: Response) => {
     await session.commitTransaction();
     responseHandler(res, 200, "Payment applied successfully.", "success");
   } catch (error: any) {
+    console.log("Error during transaction:", error);
     await session.abortTransaction();
     throw new InternalServerError(`Transaction failed: ${error?.message}`);
   } finally {
@@ -405,9 +406,9 @@ const sendPayment = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
+    await session.startTransaction();
     const orders = await Promise.all(
       orderIds.map((id: string) => Order.findById(id).session(session))
     );
