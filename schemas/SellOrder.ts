@@ -8,9 +8,11 @@ export interface ISellOrder extends Document {
   invoiceUrl: string;
   orderNumber: number;
   total: number;
+  outstandingTotal: number;
   shipToday: boolean;
   hasNegativeStock?: boolean;
   status: (typeof OrderStatusEnum)[keyof typeof OrderStatusEnum];
+  receivedDate?: Date;
 }
 
 type SellOrderModel = AggregatePaginateModel<ISellOrder>;
@@ -38,6 +40,11 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
       type: Number,
       required: true,
     },
+    outstandingTotal: {
+      type: Number,
+      min: 0,
+      required: true,
+    },
     shipToday: {
       type: Boolean,
       required: true,
@@ -50,6 +57,7 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
       required: true,
       default: OrderStatusEnum.ORDER_PRINTED,
     },
+    receivedDate: { type: Date },
   },
   { timestamps: true }
 );
