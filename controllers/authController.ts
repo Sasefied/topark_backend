@@ -13,7 +13,6 @@ import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import { BadRequestError, NotFoundError } from "../utils/errors";
 
-
 // JWT Secret and Expiration Configuration
 const JWT_SECRET: Secret = config.JWT_SECRET || "default-secret";
 const JWT_EXPIRES_IN: string | number = config.JWT_EXPIRES_IN || "7d";
@@ -82,8 +81,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
+    // const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create new user
     const user = new User({
@@ -93,23 +91,25 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       companyEmail,
       companyReferenceNumber,
       email,
-      password: hashedPassword,
+      password,
       consentGiven: !!consentGiven,
       roles: ["Admin"],
     });
 
     // Save user to database
     await user.save();
+    console.log("user", user);
+    // const isMatch = await bcrypt.compare(password, user.password);
+    // console.log("isMatch", isMatch);
 
     const newClient = new Client({
-  clientId: companyReferenceNumber,
-  clientName: `${firstName} ${lastName}`.trim(),
-  registeredName: companyName,
-  clientEmail: email,
-});
+      clientId: companyReferenceNumber,
+      clientName: `${firstName} ${lastName}`.trim(),
+      registeredName: companyName,
+      clientEmail: email,
+    });
 
-await newClient.save();
-
+    await newClient.save();
 
     responseHandler(res, 201, "User registered successfully");
   } catch (error) {
@@ -120,8 +120,6 @@ await newClient.save();
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
-
-  console.log("login - Request:", { email });
 
   if (!email || !password) {
     responseHandler(res, 400, "Email and password are required", "error");
@@ -143,8 +141,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const user = userDoc.toObject() as IUser;
+    const user = userDoc as IUser;
+    console.log("user", user);
     const isMatch = await bcrypt.compare(password, user.password);
+    console.log("isMatch", isMatch);
     if (!isMatch) {
       console.log("login - Password mismatch for email:", email);
       responseHandler(res, 401, "Invalid credentials", "error");
@@ -154,13 +154,21 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     // Block inactive users
     if (user.status === "inactive") {
       console.log("login - Inactive user:", { userId: user._id, email });
-      responseHandler(res, 403, "Account is inactive. Contact your Admin.", "error");
+      responseHandler(
+        res,
+        403,
+        "Account is inactive. Contact your Admin.",
+        "error"
+      );
       return;
     }
 
     let team = await Team.findOne({ createdBy: user._id });
     if (!team && user.roles.includes("Admin")) {
-      console.log("login - Creating team for admin:", { userId: user._id, email });
+      console.log("login - Creating team for admin:", {
+        userId: user._id,
+        email,
+      });
       team = new Team({
         teamName: `${user.companyName || "Default"} Team`,
         createdBy: user._id,
@@ -179,16 +187,22 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         { teamId: team._id },
         { new: true }
       );
-      console.log("login - Team created:", { teamId: team._id, teamName: team.teamName });
+      console.log("login - Team created:", {
+        teamId: team._id,
+        teamName: team.teamName,
+      });
     }
-// 
+    //
     if (team && !user.teamId) {
       await User.findByIdAndUpdate(
         user._id,
         { teamId: team._id },
         { new: true }
       );
-      console.log("login - Updated user teamId:", { userId: user._id, teamId: team._id });
+      console.log("login - Updated user teamId:", {
+        userId: user._id,
+        teamId: team._id,
+      });
     }
 
     const payload = {
@@ -398,7 +412,6 @@ export const resetPassword = async (
   }
 };
 
-
 export const getUserProfile = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const userId = req.userId;
@@ -434,7 +447,7 @@ export const getUserProfile = asyncHandler(
           email: 1,
           firstName: 1,
           // lastName: 1,
-          companyName:1,
+          companyName: 1,
 
           teams: {
             _id: 1,
@@ -460,7 +473,6 @@ export const getUserProfile = asyncHandler(
     );
   }
 );
-
 
 export const updateUserProfile = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -534,8 +546,10 @@ export const updateUserProfile = asyncHandler(
     }
   }
 );
-export const deleteUserProfile = asyncHandler(async (req: Request, res: Response) => {
-  await User.findByIdAndDelete(req.userId);
+export const deleteUserProfile = asyncHandler(
+  async (req: Request, res: Response) => {
+    await User.findByIdAndDelete(req.userId);
 
-  responseHandler(res, 200, "User profile deleted successfully");
-});
+    responseHandler(res, 200, "User profile deleted successfully");
+  }
+);
