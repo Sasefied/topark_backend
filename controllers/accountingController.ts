@@ -11,6 +11,280 @@ import OrderItem from "../schemas/OrderItem";
 import SellOrderItem from "../schemas/SellOrderItem";
 import SellOrderPayment from "../schemas/SellOrderPayment";
 
+// const getAllAccountingRecords = asyncHandler(
+//   async (req: Request, res: Response) => {
+//     const { startDate, endDate, clientName, prevStartDate, prevEndDate } =
+//       req.query;
+
+//     if (!startDate || !endDate) {
+//       throw new BadRequestError("startDate and endDate are required");
+//     }
+//     const start = new Date(startDate.toString());
+//     const end = new Date(endDate.toString());
+//     console.log("Fetching accounting records from", start, "to", end);
+
+//     const aggregateDaily = async (Model: Model<any>, isPayment = true) => {
+//       return await Model.aggregate([
+//         {
+//           $match: {
+//             createdAt: { $gte: start, $lte: end },
+//             userId: new mongoose.Types.ObjectId(req.userId),
+//           },
+//         },
+//         {
+//           $lookup: {
+//             from: "clients",
+//             localField: "clientId",
+//             foreignField: "_id",
+//             as: "client",
+//           },
+//         },
+//         { $unwind: "$client" },
+
+//         ...(clientName
+//           ? [
+//               {
+//                 $match: {
+//                   "client.clientName": { $regex: clientName, $options: "i" },
+//                 },
+//               },
+//             ]
+//           : []),
+
+//         // Preserve original _id before grouping
+//         {
+//           $addFields: {
+//             originalId: "$_id",
+//           },
+//         },
+
+//         // Group by client and date
+//         {
+//           $group: {
+//             _id: {
+//               clientId: "$clientId",
+//               date: {
+//                 $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+//               },
+//             },
+//             clientName: { $first: "$client.clientName" },
+//             total: { $sum: "$total" },
+//             outstanding: { $sum: "$outstandingTotal" },
+//             ids: { $push: "$originalId" }, // collect original _ids
+//           },
+//         },
+
+//         // Group by client to build dailyData array
+//         {
+//           $group: {
+//             _id: "$_id.clientId",
+//             clientName: { $first: "$clientName" },
+//             dailyData: {
+//               $push: {
+//                 ...(isPayment ? { payIds: "$ids" } : { receiveIds: "$ids" }),
+//                 date: "$_id.date",
+//                 total: "$total",
+//                 outstanding: "$outstanding",
+//               },
+//             },
+//           },
+//         },
+
+//         // Final projection
+//         {
+//           $project: {
+//             clientId: "$_id",
+//             clientName: 1,
+//             dailyData: 1,
+//           },
+//         },
+//       ]);
+//     };
+
+//     // Usage:
+//     const payments = await aggregateDaily(Order, true);
+//     const receivables = await aggregateDaily(SellOrder, false);
+
+//     console.log("Payments:", payments);
+//     console.log("Receivables:", receivables);
+
+//     // For MoM: Optionally aggregate totals for previous period if provided
+//     let prevTotalPay = 0,
+//       prevTotalReceive = 0;
+//     if (prevStartDate && prevEndDate) {
+//       const prevStart = new Date(prevStartDate.toString());
+//       const prevEnd = new Date(prevEndDate.toString());
+//       const prevPayments = await Order.aggregate([
+//         {
+//           $match: {
+//             createdAt: { $gte: prevStart, $lte: prevEnd },
+//             userId: new mongoose.Types.ObjectId(req.userId),
+//           },
+//         },
+//         { $group: { _id: null, total: { $sum: "$total" } } },
+//       ]);
+//       const prevReceivables = await SellOrder.aggregate([
+//         {
+//           $match: {
+//             createdAt: { $gte: prevStart, $lte: prevEnd },
+//             userId: new mongoose.Types.ObjectId(req.userId),
+//           },
+//         },
+//         { $group: { _id: null, total: { $sum: "$total" } } },
+//       ]);
+//       console.log(`Previous Payments:`, prevPayments);
+//       console.log(`Previous Receivables:`, prevReceivables);
+//       prevTotalPay = prevPayments[0]?.total || 0;
+//       prevTotalReceive = prevReceivables[0]?.total || 0;
+//     }
+
+//     // Combine payments and receivables by client
+//     const clientIds = new Set([
+//       ...payments.map((p) => p.clientId.toString()),
+//       ...receivables.map((r) => r.clientId.toString()),
+//     ]);
+
+//     const accountingRecords = Array.from(clientIds).map((clientId) => {
+//       const payment = payments.find(
+//         (p) => p.clientId.toString() === clientId
+//       ) || { dailyData: [], clientName: "" };
+//       console.log("Matching payment for clientId", clientId, ":", payment);
+//       const receivable = receivables.find(
+//         (r) => r.clientId.toString() === clientId
+//       ) || { dailyData: [], clientName: "" };
+//       console.log(
+//         "Matching receivable for clientId",
+//         clientId,
+//         ":",
+//         receivable
+//       );
+//       return {
+//         // payId: payment._id,
+//         // receiveId: receivable._id,
+//         clientId,
+//         clientName: payment.clientName || receivable.clientName,
+//         dailyPays: payment.dailyData,
+//         dailyReceives: receivable.dailyData,
+//       };
+//     });
+
+//     // Calculate overall totals
+//     const totalPay = payments.reduce(
+//       (sum, p) =>
+//         sum + p.dailyData.reduce((dSum: number, d: any) => dSum + d.total, 0),
+//       0
+//     );
+//     const totalReceive = receivables.reduce(
+//       (sum, r) =>
+//         sum + r.dailyData.reduce((dSum: number, d: any) => dSum + d.total, 0),
+//       0
+//     );
+//     const totalOutstanding = payments.reduce(
+//       (sum, p) =>
+//         sum +
+//         p.dailyData.reduce((dSum: number, d: any) => dSum + d.outstanding, 0),
+//       0
+//     );
+//     const inflow = totalReceive - totalPay;
+//     const momChange =
+//       prevTotalReceive && prevTotalPay
+//         ? inflow - (prevTotalReceive - prevTotalPay)
+//         : 0;
+//     const netChange = inflow; // Or customize, e.g., momChange + inflow
+
+//     // Outflow as array [totalPay, totalOutstanding] to match image's two values
+//     const outflow = [totalPay, totalOutstanding];
+
+//     // For P&L graph: Aggregate overall daily totals, with separate profit/loss
+//     const allDates = [
+//       ...new Set([
+//         ...payments.flatMap((p) => p.dailyData.map((d: any) => d.date)),
+//         ...receivables.flatMap((r) => r.dailyData.map((d: any) => d.date)),
+//       ]),
+//     ].sort();
+//     const dailyPnL = allDates.map((date) => {
+//       const dayPay = payments.reduce(
+//         (sum, p) =>
+//           sum + (p.dailyData.find((d: any) => d.date === date)?.total || 0),
+//         0
+//       );
+//       const dayReceive = receivables.reduce(
+//         (sum, r) =>
+//           sum + (r.dailyData.find((d: any) => d.date === date)?.total || 0),
+//         0
+//       );
+//       const pnl = dayReceive - dayPay;
+//       return { date, pnl, profit: pnl > 0 ? pnl : 0, loss: pnl < 0 ? pnl : 0 };
+//     });
+
+//     // Today metrics (for August 29, 2025)
+//     const todayStart = new Date(); // Current date: 2025-08-29
+//     todayStart.setHours(0, 0, 0, 0);
+//     const todayEnd = new Date();
+//     todayEnd.setHours(23, 59, 59, 999);
+
+//     const incomeTodayAgg = await SellOrder.aggregate([
+//       {
+//         $match: {
+//           createdAt: { $gte: todayStart, $lte: todayEnd },
+//           userId: new mongoose.Types.ObjectId(req.userId),
+//         },
+//       },
+//       { $group: { _id: null, total: { $sum: "$total" } } },
+//     ]);
+//     const incomeToday = incomeTodayAgg[0]?.total || 0;
+
+//     const dueTodayAgg = await Order.aggregate([
+//       { $match: { userId: new mongoose.Types.ObjectId(req.userId) } }, // All outstanding; adjust if dueDate exists
+//       { $group: { _id: null, total: { $sum: "$outstandingTotal" } } },
+//     ]);
+//     const dueToday = dueTodayAgg[0]?.total || 0;
+
+//     const paymentDefaultsAgg = await Order.aggregate([
+//       {
+//         $match: {
+//           outstandingTotal: { $gt: 0 },
+//           userId: new mongoose.Types.ObjectId(req.userId),
+//         },
+//       },
+//       { $count: "count" },
+//     ]);
+//     const paymentDefaults = paymentDefaultsAgg[0]?.count || 0;
+
+//     const paymentsDueTodayAgg = await SellOrder.aggregate([
+//       {
+//         $match: {
+//           createdAt: { $gte: todayStart, $lte: todayEnd },
+//           userId: new mongoose.Types.ObjectId(req.userId),
+//         },
+//       },
+//       { $count: "count" },
+//     ]);
+//     const paymentsDueToday = paymentsDueTodayAgg[0]?.count || 0;
+
+//     const totalDueToday = incomeToday + dueToday; // Example; adjust logic
+
+//     responseHandler(
+//       res,
+//       200,
+//       "Accounting records fetched successfully",
+//       "success",
+//       {
+//         records: accountingRecords,
+//         outflow,
+//         momChange,
+//         netChange,
+//         dailyPnL,
+//         incomeToday,
+//         dueToday,
+//         paymentDefaults,
+//         paymentsDueToday,
+//         totalDueToday,
+//       }
+//     );
+//   }
+// );
+
 const getAllAccountingRecords = asyncHandler(
   async (req: Request, res: Response) => {
     const { startDate, endDate, clientName, prevStartDate, prevEndDate } =
@@ -27,7 +301,6 @@ const getAllAccountingRecords = asyncHandler(
       return await Model.aggregate([
         {
           $match: {
-            createdAt: { $gte: start, $lte: end },
             userId: new mongoose.Types.ObjectId(req.userId),
           },
         },
@@ -40,6 +313,65 @@ const getAllAccountingRecords = asyncHandler(
           },
         },
         { $unwind: "$client" },
+        {
+          $addFields: {
+            interval: {
+              $switch: {
+                branches: [
+                  {
+                    case: { $eq: ["$client.creditLimit.period", "day"] },
+                    then: "$client.creditLimit.amount",
+                  },
+                  {
+                    case: { $eq: ["$client.creditLimit.period", "week"] },
+                    then: { $multiply: ["$client.creditLimit.amount", 7] },
+                  },
+                  {
+                    case: { $eq: ["$client.creditLimit.period", "month"] },
+                    then: "$client.creditLimit.amount",
+                  },
+                ],
+                default: 0,
+              },
+            },
+            unit: {
+              $switch: {
+                branches: [
+                  {
+                    case: {
+                      $or: [
+                        { $eq: ["$client.creditLimit.period", "day"] },
+                        { $eq: ["$client.creditLimit.period", "week"] },
+                      ],
+                    },
+                    then: "day",
+                  },
+                  {
+                    case: { $eq: ["$client.creditLimit.period", "month"] },
+                    then: "month",
+                  },
+                ],
+                default: "day",
+              },
+            },
+          },
+        },
+        {
+          $addFields: {
+            dueDate: {
+              $dateAdd: {
+                startDate: "$createdAt",
+                unit: "$unit",
+                amount: "$interval",
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            dueDate: { $gte: start, $lte: end },
+          },
+        },
 
         ...(clientName
           ? [
@@ -64,7 +396,7 @@ const getAllAccountingRecords = asyncHandler(
             _id: {
               clientId: "$clientId",
               date: {
-                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                $dateToString: { format: "%Y-%m-%d", date: "$dueDate" },
               },
             },
             clientName: { $first: "$client.clientName" },
@@ -114,24 +446,88 @@ const getAllAccountingRecords = asyncHandler(
     if (prevStartDate && prevEndDate) {
       const prevStart = new Date(prevStartDate.toString());
       const prevEnd = new Date(prevEndDate.toString());
-      const prevPayments = await Order.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: prevStart, $lte: prevEnd },
-            userId: new mongoose.Types.ObjectId(req.userId),
+
+      const aggregatePrev = async (Model: Model<any>) => {
+        return await Model.aggregate([
+          {
+            $match: {
+              userId: new mongoose.Types.ObjectId(req.userId),
+            },
           },
-        },
-        { $group: { _id: null, total: { $sum: "$total" } } },
-      ]);
-      const prevReceivables = await SellOrder.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: prevStart, $lte: prevEnd },
-            userId: new mongoose.Types.ObjectId(req.userId),
+          {
+            $lookup: {
+              from: "clients",
+              localField: "clientId",
+              foreignField: "_id",
+              as: "client",
+            },
           },
-        },
-        { $group: { _id: null, total: { $sum: "$total" } } },
-      ]);
+          { $unwind: "$client" },
+          {
+            $addFields: {
+              interval: {
+                $switch: {
+                  branches: [
+                    {
+                      case: { $eq: ["$client.creditLimit.period", "day"] },
+                      then: "$client.creditLimit.amount",
+                    },
+                    {
+                      case: { $eq: ["$client.creditLimit.period", "week"] },
+                      then: { $multiply: ["$client.creditLimit.amount", 7] },
+                    },
+                    {
+                      case: { $eq: ["$client.creditLimit.period", "month"] },
+                      then: "$client.creditLimit.amount",
+                    },
+                  ],
+                  default: 0,
+                },
+              },
+              unit: {
+                $switch: {
+                  branches: [
+                    {
+                      case: {
+                        $or: [
+                          { $eq: ["$client.creditLimit.period", "day"] },
+                          { $eq: ["$client.creditLimit.period", "week"] },
+                        ],
+                      },
+                      then: "day",
+                    },
+                    {
+                      case: { $eq: ["$client.creditLimit.period", "month"] },
+                      then: "month",
+                    },
+                  ],
+                  default: "day",
+                },
+              },
+            },
+          },
+          {
+            $addFields: {
+              dueDate: {
+                $dateAdd: {
+                  startDate: "$createdAt",
+                  unit: "$unit",
+                  amount: "$interval",
+                },
+              },
+            },
+          },
+          {
+            $match: {
+              dueDate: { $gte: prevStart, $lte: prevEnd },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$total" } } },
+        ]);
+      };
+
+      const prevPayments = await aggregatePrev(Order);
+      const prevReceivables = await aggregatePrev(SellOrder);
       console.log(`Previous Payments:`, prevPayments);
       console.log(`Previous Receivables:`, prevReceivables);
       prevTotalPay = prevPayments[0]?.total || 0;
@@ -234,35 +630,100 @@ const getAllAccountingRecords = asyncHandler(
     ]);
     const incomeToday = incomeTodayAgg[0]?.total || 0;
 
-    const dueTodayAgg = await Order.aggregate([
-      { $match: { userId: new mongoose.Types.ObjectId(req.userId) } }, // All outstanding; adjust if dueDate exists
-      { $group: { _id: null, total: { $sum: "$outstandingTotal" } } },
-    ]);
+    const aggregateTodayDue = async (Model: Model<any>, isOverdue = false, isCount = false, isReceive = false) => {
+      const matchDue = isOverdue 
+        ? { dueDate: { $lt: todayStart } } 
+        : { dueDate: { $gte: todayStart, $lte: todayEnd } };
+      const stages = [
+        {
+          $match: {
+            outstandingTotal: { $gt: 0 },
+            userId: new mongoose.Types.ObjectId(req.userId),
+          },
+        },
+        {
+          $lookup: {
+            from: "clients",
+            localField: "clientId",
+            foreignField: "_id",
+            as: "client",
+          },
+        },
+        { $unwind: "$client" },
+        {
+          $addFields: {
+            interval: {
+              $switch: {
+                branches: [
+                  {
+                    case: { $eq: ["$client.creditLimit.period", "day"] },
+                    then: "$client.creditLimit.amount",
+                  },
+                  {
+                    case: { $eq: ["$client.creditLimit.period", "week"] },
+                    then: { $multiply: ["$client.creditLimit.amount", 7] },
+                  },
+                  {
+                    case: { $eq: ["$client.creditLimit.period", "month"] },
+                    then: "$client.creditLimit.amount",
+                  },
+                ],
+                default: 0,
+              },
+            },
+            unit: {
+              $switch: {
+                branches: [
+                  {
+                    case: {
+                      $or: [
+                        { $eq: ["$client.creditLimit.period", "day"] },
+                        { $eq: ["$client.creditLimit.period", "week"] },
+                      ],
+                    },
+                    then: "day",
+                  },
+                  {
+                    case: { $eq: ["$client.creditLimit.period", "month"] },
+                    then: "month",
+                  },
+                ],
+                default: "day",
+              },
+            },
+          },
+        },
+        {
+          $addFields: {
+            dueDate: {
+              $dateAdd: {
+                startDate: "$createdAt",
+                unit: "$unit",
+                amount: "$interval",
+              },
+            },
+          },
+        },
+        { $match: matchDue },
+      ];
+      if (isCount) {
+        stages.push({ $count: "count" } as any);
+      } else {
+        stages.push({ $group: { _id: null, total: { $sum: "$outstandingTotal" } } } as any);
+      }
+      return await Model.aggregate(stages);
+    };
+
+    const dueTodayAgg = await aggregateTodayDue(Order, false);
     const dueToday = dueTodayAgg[0]?.total || 0;
 
-    const paymentDefaultsAgg = await Order.aggregate([
-      {
-        $match: {
-          outstandingTotal: { $gt: 0 },
-          userId: new mongoose.Types.ObjectId(req.userId),
-        },
-      },
-      { $count: "count" },
-    ]);
+    const paymentDefaultsAgg = await aggregateTodayDue(Order, true, true);
     const paymentDefaults = paymentDefaultsAgg[0]?.count || 0;
 
-    const paymentsDueTodayAgg = await SellOrder.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: todayStart, $lte: todayEnd },
-          userId: new mongoose.Types.ObjectId(req.userId),
-        },
-      },
-      { $count: "count" },
-    ]);
+    const paymentsDueTodayAgg = await aggregateTodayDue(SellOrder, false, true);
     const paymentsDueToday = paymentsDueTodayAgg[0]?.count || 0;
 
-    const totalDueToday = incomeToday + dueToday; // Example; adjust logic
+    const totalDueToday = incomeToday + dueToday;
 
     responseHandler(
       res,

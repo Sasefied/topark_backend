@@ -141,7 +141,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const user = userDoc as IUser;
+    const user = userDoc.toObject() as IUser;
     console.log("user", user);
     const isMatch = await bcrypt.compare(password, user.password);
     console.log("isMatch", isMatch);
@@ -164,6 +164,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     let team = await Team.findOne({ createdBy: user._id });
+    console.log("team-----------", team);
     if (!team && user.roles.includes("Admin")) {
       console.log("login - Creating team for admin:", {
         userId: user._id,

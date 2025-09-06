@@ -25,6 +25,7 @@ export const createClient = async (
       registeredAddress,
       deliveryAddress,
       clientNotes,
+      creditLimit
     } = req.body;
 
     if (!clientId || !clientName || !clientEmail.trim() || !registeredName) {
@@ -91,6 +92,7 @@ export const createClient = async (
       deliveryAddress: deliveryAddress || "",
       clientNotes: clientNotes || "",
       companyReferenceNumber: clientId,
+      creditLimit
     });
 
     await newClient.save();
