@@ -27,10 +27,10 @@ const userSchema: Schema<IUser> = new Schema(
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
-    companyEmail: {type: String, required: true, unique: true},
+    companyEmail: {type: String, unique: true},
     password: { type: String, required: true },
-    companyName: { type: String, required: true },
-    companyReferenceNumber: { type: String, required: true, unique: true },
+    companyName: { type: String, required: false },
+    companyReferenceNumber: { type: String, required: false, unique: true },
    
     consentGiven: { type: Boolean, required: true, default: false },
     roles: [
