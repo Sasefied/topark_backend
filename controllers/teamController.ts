@@ -23,12 +23,106 @@ interface TeamMemberInput {
 
 // STEP 1: Save Team Name
 
+
+export const saveTeamName = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const { teamName, teamId } = req.body;
+  console.log("team..", req.body);
+  const userId = req.userId;
+  console.log("saveTeamName - Input:", { userId, teamName, teamId });
+
+  if (!teamName || typeof teamName !== "string" || teamName.trim() === "") {
+    console.log("saveTeamName - Error: Invalid team name");
+    responseHandler(
+      res,
+      400,
+      "Team name is required and must be a non-empty string"
+    );
+    return;
+  }
+
+  try {
+    const existingTeam = await Team.findOne({teamName });
+    if (existingTeam) {
+      console.log(
+        "saveTeamName - Error: Team name already exists",
+        existingTeam
+      );
+      responseHandler(
+        res,
+        400,
+        "Team name already exists. Please choose another."
+      );
+      return;
+    }
+
+    const creatorUser = await User.findById(userId);
+    if (!creatorUser) {
+      console.log("saveTeamName - Error: User not found for ID", userId);
+      responseHandler(res, 404, "User not found");
+      return;
+    }
+
+    const team = await Team.findById(teamId);
+    if (!team) {
+      responseHandler(res, 400, "Team not found.");
+      return;
+    }
+
+    team.teamName = teamName.trim();
+
+    const savedTeam = await team.save();
+    console.log(
+      "saveTeamName - Team saved:",
+      JSON.stringify(savedTeam, null, 2)
+    );
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { teamId: savedTeam._id },
+      { new: true }
+    );
+    console.log(
+      "saveTeamName - Updated user:",
+      JSON.stringify(updatedUser, null, 2)
+    );
+
+    if (!updatedUser) {
+      console.log("saveTeamName - Error: Failed to update user with teamId");
+      responseHandler(res, 500, "Failed to update user with teamId");
+      return;
+    }
+
+    responseHandler(
+      res,
+      201,
+      "Team name saved successfully. Proceed to set primary usage.",
+      "success",
+      // savedTeam,
+      {
+        teamName: savedTeam.teamName,
+        teamId: savedTeam.id.toString(),
+        createdBy: savedTeam.createdBy,
+        members: savedTeam.members,
+        addedOn: savedTeam.addedOn,
+        createdAt: savedTeam.createdAt,
+        updatedAt: savedTeam.updatedAt,
+        _id: savedTeam.id.toString(),
+      }
+    );
+  } catch (error) {
+    console.error("saveTeamName - Error:", error);
+    responseHandler(res, 500, "Internal server error");
+  }
+};
+
 // export const saveTeamName = async (
 //   req: Request,
 //   res: Response
 // ): Promise<void> => {
 //   const { teamName, teamId } = req.body;
-//   console.log("team..", req.body);
 //   const userId = req.userId;
 //   console.log("saveTeamName - Input:", { userId, teamName, teamId });
 
@@ -84,7 +178,7 @@ interface TeamMemberInput {
 //       { new: true }
 //     );
 //     console.log(
-//       "saveTeamName - Updated user:",
+//       "saveTeamName - Updated user with teamId:",
 //       JSON.stringify(updatedUser, null, 2)
 //     );
 
@@ -99,7 +193,6 @@ interface TeamMemberInput {
 //       201,
 //       "Team name saved successfully. Proceed to set primary usage.",
 //       "success",
-//       // savedTeam,
 //       {
 //         teamName: savedTeam.teamName,
 //         teamId: savedTeam.id.toString(),
@@ -116,97 +209,6 @@ interface TeamMemberInput {
 //     responseHandler(res, 500, "Internal server error");
 //   }
 // };
-export const saveTeamName = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  const { teamName, teamId } = req.body;
-  const userId = req.userId;
-  console.log("saveTeamName - Input:", { userId, teamName, teamId });
-
-  if (!teamName || typeof teamName !== "string" || teamName.trim() === "") {
-    console.log("saveTeamName - Error: Invalid team name");
-    responseHandler(
-      res,
-      400,
-      "Team name is required and must be a non-empty string"
-    );
-    return;
-  }
-
-  try {
-    const existingTeam = await Team.findOne({ teamName });
-    if (existingTeam) {
-      console.log(
-        "saveTeamName - Error: Team name already exists",
-        existingTeam
-      );
-      responseHandler(
-        res,
-        400,
-        "Team name already exists. Please choose another."
-      );
-      return;
-    }
-
-    const creatorUser = await User.findById(userId);
-    if (!creatorUser) {
-      console.log("saveTeamName - Error: User not found for ID", userId);
-      responseHandler(res, 404, "User not found");
-      return;
-    }
-
-    const team = new Team({
-      teamName: teamName.trim(),
-      teamId: teamId || new mongoose.Types.ObjectId().toString(),
-      addedOn: new Date().toLocaleDateString("en-US"),
-      createdBy: userId,
-      members: [],
-    });
-
-    const savedTeam = await team.save();
-    console.log(
-      "saveTeamName - Team saved:",
-      JSON.stringify(savedTeam, null, 2)
-    );
-
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { teamId: savedTeam._id },
-      { new: true }
-    );
-    console.log(
-      "saveTeamName - Updated user with teamId:",
-      JSON.stringify(updatedUser, null, 2)
-    );
-
-    if (!updatedUser) {
-      console.log("saveTeamName - Error: Failed to update user with teamId");
-      responseHandler(res, 500, "Failed to update user with teamId");
-      return;
-    }
-
-    responseHandler(
-      res,
-      201,
-      "Team name saved successfully. Proceed to set primary usage.",
-      "success",
-      {
-        teamName: savedTeam.teamName,
-        teamId: savedTeam.id.toString(),
-        createdBy: savedTeam.createdBy,
-        members: savedTeam.members,
-        addedOn: savedTeam.addedOn,
-        createdAt: savedTeam.createdAt,
-        updatedAt: savedTeam.updatedAt,
-        _id: savedTeam.id.toString(),
-      }
-    );
-  } catch (error) {
-    console.error("saveTeamName - Error:", error);
-    responseHandler(res, 500, "Internal server error");
-  }
-};
 // STEP 2: Update Primary Usage
 
 // export const updatePrimaryUsage = async (
