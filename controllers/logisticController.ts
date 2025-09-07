@@ -9,7 +9,7 @@ import {
   NotFoundError,
 } from "../utils/errors";
 import ReportedIssue from "../schemas/ReportedIssue";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { getStaticFilePath } from "../utils/helpers";
 import OrderItem from "../schemas/OrderItem";
 import { OrderItemStatusEnum } from "../api/constants";
@@ -29,6 +29,11 @@ const getAllLogisticOrders = async (req: Request, res: Response) => {
     const { page = 1, limit = 10 } = req.query;
 
     const orderAggregate = Order.aggregate([
+      {
+     $match: {
+               userId: new Types.ObjectId(req.userId)
+     }
+      },
       {
         $lookup: {
           from: "clients",

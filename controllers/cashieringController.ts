@@ -19,12 +19,12 @@ const getAllCashieringOrders = async (req: Request, res: Response) => {
     }
 
     const orderAggregate = Order.aggregate([
-      // {
-      //   $match: {
-      //     userId: new Types.ObjectId(req.userId),
-      //     orderStatus: "Delivered",
-      //   },
-      // },
+      {
+        $match: {
+          userId: new Types.ObjectId(req.userId),
+          // orderStatus: "Delivered",
+        },
+      },
       {
         $lookup: {
           from: "orderitems",
@@ -522,7 +522,7 @@ const processCashieringOrder = async (req: Request, res: Response) => {
         const applyAmount = Math.min(item.outstandingPrice, remainingPayment);
         item.outstandingPrice -= applyAmount;
         remainingPayment -= applyAmount;
-
+         console.log(`Applying payment of ${applyAmount} to OrderItem ${item._id}. Remaining payment: ${remainingPayment}`);
         await item.save({ session });
       }
 
@@ -531,7 +531,7 @@ const processCashieringOrder = async (req: Request, res: Response) => {
         (sum, item) => sum + item.outstandingPrice,
         0
       );
-
+console.log(`Order ${order._id} outstanding total updated to ${order.outstandingTotal}`);
       // Update order status if fully paid
       if (order.outstandingTotal <= 0) {
         order.orderStatus = "Delivered";
