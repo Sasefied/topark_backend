@@ -48,7 +48,7 @@ const sellOrderItemSchema: Schema<ISellOrderItem> = new Schema(
       enum: AvailableSellOrderItemStatuses,
       required: true,
       default: SellOrderItemStatusEnum.ORDER_PRINTED,
-      default: OrderItemStatusEnum.ORDER_PRINTED,
+      // default: OrderItemStatusEnum.ORDER_PRINTED,
     },
   },
   { timestamps: true }

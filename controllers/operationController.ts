@@ -201,20 +201,20 @@ const confirmOperationSellOrderItem = asyncHandler(
       throw new BadRequestError("Order item not found");
     }
 
-    if (orderItem.status === OrderItemStatusEnum.PALLETTE_READY) {
-      orderItem.status = OrderItemStatusEnum.ORDER_PRINTED;
+    if (orderItem.status === SellOrderItemStatusEnum.PALLETTE_READY) {
+      orderItem.status = SellOrderItemStatusEnum.ORDER_PRINTED;
     } else {
-      orderItem.status = OrderItemStatusEnum.PALLETTE_READY;
+      orderItem.status = SellOrderItemStatusEnum.PALLETTE_READY;
     }
 
     // Update to PALLETTE_READY
-    orderItem.status = OrderItemStatusEnum.PALLETTE_READY;
+    orderItem.status = SellOrderItemStatusEnum.PALLETTE_READY;
     await orderItem.save();
 
     responseHandler(
       res,
       200,
-      `Order item ${orderItem.status === OrderItemStatusEnum.PALLETTE_READY ? "confirmed" : "unconfirmed"} successfully`,
+      `Order item ${orderItem.status === SellOrderItemStatusEnum.PALLETTE_READY ? "confirmed" : "unconfirmed"} successfully`,
       "success"
     );
   }
@@ -243,7 +243,7 @@ const markAsShippedOperationSellOrder = asyncHandler(
 
     if (
       orderItems.some(
-        (item) => item.status !== OrderItemStatusEnum.PALLETTE_READY
+        (item) => item.status !== SellOrderItemStatusEnum.PALLETTE_READY
       )
     ) {
       throw new BadRequestError("Some order items are not confirmed");
