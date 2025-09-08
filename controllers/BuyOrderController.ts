@@ -240,6 +240,7 @@ const createBulkBuyOrders = async (
           color,
           ccy: ccy || "GBP",
           productId: new Types.ObjectId(productId),
+          outstandingPrice: quantity * price,
         });
         await newOrderItem.save({ session });
 
@@ -487,7 +488,7 @@ const deleteBuyOrder = async (
 //         "error"
 //       );
 //     }
-    
+
 //     if (price !== undefined && (typeof price !== "number" || price < 0)) {
 //       return responseHandler(res, 400, `Invalid price: ${price}`, "error");
 //     }
@@ -686,7 +687,7 @@ const updateBuyOrder = async (
         "error"
       );
     }
-    
+
     if (price !== undefined && (typeof price !== "number" || price < 0)) {
       return responseHandler(res, 400, `Invalid price: ${price}`, "error");
     }
@@ -780,7 +781,8 @@ const updateBuyOrder = async (
     if (deliveryDate !== undefined)
       orderItemUpdates.deliveryDate = new Date(deliveryDate);
     if (quantity !== undefined || price !== undefined) {
-      const updatedQuantity = quantity !== undefined ? quantity : orderItem.quantity;
+      const updatedQuantity =
+        quantity !== undefined ? quantity : orderItem.quantity;
       const updatedPrice = price !== undefined ? price : orderItem.price;
       orderItemUpdates.outstandingPrice = updatedQuantity * updatedPrice;
     }
@@ -795,7 +797,8 @@ const updateBuyOrder = async (
     const orderUpdates: Partial<IOrder> = {};
     if (orderStatus !== undefined) orderUpdates.orderStatus = orderStatus;
     if (quantity !== undefined || price !== undefined) {
-      const updatedQuantity = quantity !== undefined ? quantity : orderItem.quantity;
+      const updatedQuantity =
+        quantity !== undefined ? quantity : orderItem.quantity;
       const updatedPrice = price !== undefined ? price : orderItem.price;
       orderUpdates.total = updatedQuantity * updatedPrice;
       orderUpdates.outstandingTotal = updatedQuantity * updatedPrice;
@@ -903,22 +906,16 @@ const updateBuyOrder = async (
 
     const updatedOrderDetails = orderAggregate[0] || {};
 
-    responseHandler(
-      res,
-      200,
-      "Buy order updated successfully",
-      "success",
-      {
-        _id: updatedOrder?._id,
-        orderStatus: updatedOrder?.orderStatus,
-        total: updatedOrder?.total,
-        outstandingTotal: updatedOrder?.outstandingTotal,
-        orderItem: updatedOrderItem,
-        inventory: updatedOrderDetails.inventory,
-        clientDetails: updatedOrderDetails.clientDetails,
-        adminProducts: updatedOrderDetails.adminProducts,
-      }
-    );
+    responseHandler(res, 200, "Buy order updated successfully", "success", {
+      _id: updatedOrder?._id,
+      orderStatus: updatedOrder?.orderStatus,
+      total: updatedOrder?.total,
+      outstandingTotal: updatedOrder?.outstandingTotal,
+      orderItem: updatedOrderItem,
+      inventory: updatedOrderDetails.inventory,
+      clientDetails: updatedOrderDetails.clientDetails,
+      adminProducts: updatedOrderDetails.adminProducts,
+    });
   } catch (error: any) {
     console.error("Error updating buy order:", {
       message: error.message,

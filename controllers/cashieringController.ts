@@ -423,9 +423,11 @@ const getCashieringOrderByIds = async (req: Request, res: Response) => {
   }
 };
 
-
 const processCashieringOrder = async (req: Request, res: Response) => {
-  console.log("Received payload in processCashieringOrder:", JSON.stringify(req.body, null, 2));
+  console.log(
+    "Received payload in processCashieringOrder:",
+    JSON.stringify(req.body, null, 2)
+  );
 
   const {
     orderIds,
@@ -438,7 +440,9 @@ const processCashieringOrder = async (req: Request, res: Response) => {
 
   // Validate inputs
   if (!Array.isArray(orderIds) || orderIds.length === 0) {
-    throw new BadRequestError(`At least one order ID is required. Received orderIds: ${JSON.stringify(orderIds)}`);
+    throw new BadRequestError(
+      `At least one order ID is required. Received orderIds: ${JSON.stringify(orderIds)}`
+    );
   }
 
   if (!["manual", "automatic"].includes(mode)) {
@@ -489,23 +493,14 @@ const processCashieringOrder = async (req: Request, res: Response) => {
       throw new NotFoundError("No valid orders found");
     }
 
-    // Insert payment records for each order
-    const paymentRecords = [];
+    console.log("Orders to be processed:", orders);
+
+    // Prepare remaining payments
+    let remainingByMethod = { cash, card, cheque };
     let remainingPayment = totalPayment;
+    const paymentRecords = [];
+    const methodsOrder = ["cash", "card", "cheque"];
 
-    for (const order of orders) {
-      const orderPayment = paymentMethods.map((p) => ({
-        orderId: order._id,
-        method: p.method,
-        amount: p.amount,
-        createdBy: req.userId,
-      }));
-      paymentRecords.push(...orderPayment);
-    }
-
-    await OrderPayment.insertMany(paymentRecords, { session });
-
-    // Process order items
     for (const order of orders) {
       if (remainingPayment <= 0) break;
 
@@ -516,13 +511,63 @@ const processCashieringOrder = async (req: Request, res: Response) => {
         .sort({ deliveryDate: 1, createdAt: 1 })
         .session(session);
 
-      for (const item of orderItems) {
-        if (remainingPayment <= 0) break;
+      if (orderItems.length === 0) {
+        if (order.outstandingTotal > 0) {
+          throw new BadRequestError(
+            `Order ${order._id} has outstanding total ${order.outstandingTotal} but no items with outstanding price`
+          );
+        }
+        continue;
+      }
 
-        const applyAmount = Math.min(item.outstandingPrice, remainingPayment);
+      const itemsOutstanding = orderItems.reduce(
+        (sum, item) => sum + item.outstandingPrice,
+        0
+      );
+      if (itemsOutstanding !== order.outstandingTotal) {
+        throw new BadRequestError(
+          `Inconsistency for order ${order._id}: items outstanding sum ${itemsOutstanding} != order outstanding total ${order.outstandingTotal}`
+        );
+      }
+
+      // Determine how much to apply to this order
+      const applyToOrder = Math.min(remainingPayment, order.outstandingTotal);
+
+      // Distribute applyToOrder across payment methods
+      const orderPaymentRecords = [];
+      let remainingApply = applyToOrder;
+
+      for (const method of methodsOrder) {
+        if (remainingApply <= 0) break;
+        const available = remainingByMethod[method as keyof typeof remainingByMethod];
+        if (available <= 0) continue;
+        const useAmount = Math.min(available, remainingApply);
+        orderPaymentRecords.push({
+          orderId: order._id,
+          method,
+          amount: useAmount,
+          createdBy: req.userId,
+        });
+        remainingByMethod[method as keyof typeof remainingByMethod] -= useAmount;
+        remainingApply -= useAmount;
+        remainingPayment -= useAmount;
+      }
+
+      if (remainingApply > 0) {
+        throw new InternalServerError("Failed to allocate payment methods");
+      }
+
+      // Apply the payment to order items
+      let toApply = applyToOrder;
+      for (const item of orderItems) {
+        console.log("Processing OrderItem", item);
+        if (toApply <= 0) break;
+        const applyAmount = Math.min(item.outstandingPrice, toApply);
         item.outstandingPrice -= applyAmount;
-        remainingPayment -= applyAmount;
-         console.log(`Applying payment of ${applyAmount} to OrderItem ${item._id}. Remaining payment: ${remainingPayment}`);
+        toApply -= applyAmount;
+        console.log(
+          `Applying payment of ${applyAmount} to OrderItem ${item._id}. Remaining to apply to order: ${toApply}`
+        );
         await item.save({ session });
       }
 
@@ -531,14 +576,29 @@ const processCashieringOrder = async (req: Request, res: Response) => {
         (sum, item) => sum + item.outstandingPrice,
         0
       );
-console.log(`Order ${order._id} outstanding total updated to ${order.outstandingTotal}`);
+      console.log(
+        `Order ${order._id} outstanding total updated to ${order.outstandingTotal}`
+      );
       // Update order status if fully paid
       if (order.outstandingTotal <= 0) {
         order.orderStatus = "Delivered";
       }
 
       await order.save({ session });
+
+      // Add to overall payment records
+      paymentRecords.push(...orderPaymentRecords);
     }
+
+    // Insert payment records
+    if (paymentRecords.length > 0) {
+      await OrderPayment.insertMany(paymentRecords, { session });
+    }
+
+    // Optional: Check for overpayment
+    // if (remainingPayment > 0) {
+    //   throw new BadRequestError(`Overpayment of ${remainingPayment} detected`);
+    // }
 
     // Commit transaction
     await session.commitTransaction();
@@ -554,6 +614,7 @@ console.log(`Order ${order._id} outstanding total updated to ${order.outstanding
     }
   }
 };
+
 export {
   getAllCashieringOrders,
   searchCashieringOrders,
