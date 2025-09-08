@@ -117,6 +117,141 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     responseHandler(res, 500, "Internal server error");
   }
 };
+// export const login = async (req: Request, res: Response): Promise<void> => {
+//   const { email, password } = req.body;
+
+//   if (!email || !password) {
+//     responseHandler(res, 400, "Email and password are required", "error");
+//     return;
+//   }
+
+//   // Validate email format
+//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//   if (!emailRegex.test(email)) {
+//     responseHandler(res, 400, "Invalid email format", "error");
+//     return;
+//   }
+
+//   try {
+//     const userDoc = await User.findOne({ email });
+//     if (!userDoc) {
+//       console.log("login - User not found for email:", email);
+//       responseHandler(res, 401, "Invalid credentials", "error");
+//       return;
+//     }
+
+//     const user = userDoc as IUser;
+//     console.log("login - User found:", { userId: user._id, email, roles: user.roles });
+
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) {
+//       console.log("login - Password mismatch for email:", email);
+//       responseHandler(res, 401, "Invalid credentials", "error");
+//       return;
+//     }
+
+//     // Block inactive users
+//     if (user.status === "inactive") {
+//       console.log("login - Inactive user:", { userId: user._id, email });
+//       responseHandler(
+//         res,
+//         403,
+//         "Account is inactive. Contact your Admin.",
+//         "error"
+//       );
+//       return;
+//     }
+
+//     // Fetch team based on user's teamId or createdBy
+//     let team = null;
+//     if (user.teamId) {
+//       team = await Team.findById(user.teamId);
+//       console.log("login - Team found by teamId:", {
+//         teamId: user.teamId,
+//         teamName: team?.teamName,
+//         primaryUsage: team?.primaryUsage,
+//       });
+//     }
+//     if (!team && user.roles.includes("Admin")) {
+//       console.log("login - No team found, creating team for admin:", {
+//         userId: user._id,
+//         email,
+//       });
+//       team = new Team({
+//         teamName: `${user.companyName || "Default"} Team`,
+//         createdBy: user._id,
+//         members: [
+//           {
+//             user: user._id,
+//             email: user.email,
+//             roles: ["Admin"],
+//             status: "active",
+//           },
+//         ],
+//       });
+//       await team.save();
+//       await User.findByIdAndUpdate(
+//         user._id,
+//         { teamId: team._id },
+//         { new: true }
+//       );
+//     }
+
+//     const payload = {
+//       iss: "ToprakApp",
+//       sub: user._id.toString(),
+//       firstName: user.firstName,
+//       lastName: user.lastName,
+//       email: user.email,
+//       roles: user.roles,
+//       teamId: team ? String(team._id) : null,
+//     };
+
+//     const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+//     const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+
+//     const token = jwt.sign(payload, JWT_SECRET, {
+//       expiresIn: JWT_EXPIRES_IN,
+//     } as SignOptions);
+
+//     console.log("login - Generated token for user:", {
+//       userId: user._id.toString(),
+//       email: user.email,
+//       roles: user.roles,
+//       teamId: team ? String(team._id) : null,
+//       primaryUsage: team?.primaryUsage || null,
+//     });
+
+//     res.status(200).json({
+//       status: "success",
+//       data: {
+//         token,
+//         user: {
+//           id: user._id.toString(),
+//           firstName: user.firstName,
+//           lastName: user.lastName,
+//           email: user.email,
+//           roles: user.roles,
+//           teamId: team ? String(team._id) : null,
+//         },
+//         team: team
+//           ? {
+//               id: String(team._id),
+//               teamName: team.teamName,
+//               primaryUsage: team.primaryUsage || null,
+//             }
+//           : null,
+//       },
+//     });
+//   } catch (error: any) {
+//     console.error("login - Error:", {
+//       message: error.message,
+//       stack: error.stack,
+//       email,
+//     });
+//     responseHandler(res, 500, "Internal server error", "error");
+//   }
+// };
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
