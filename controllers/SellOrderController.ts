@@ -668,6 +668,7 @@ const createSellOrder = asyncHandler(
               clientId,
               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
               total,
+              outstandingTotal: total,
               shipToday,
               hasNegativeStock,
               status: OrderStatusEnum.ORDER_PRINTED, // Explicitly set status
