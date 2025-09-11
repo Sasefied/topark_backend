@@ -44,23 +44,22 @@ export const saveTeamName = async (
   }
 
   try {
-    const existingTeam = await Team.findOne({teamName });
-    if (existingTeam) {
-      console.log(
-        "saveTeamName - Error: Team name already exists",
-        existingTeam
-      );
-      responseHandler(
-        res,
-        400,
-        "Team name already exists. Please choose another."
-      );
-      return;
-    }
+    // const existingTeam = await Team.findOne({teamName });
+    // if (existingTeam) {
+    //   console.log(
+    //     "saveTeamName - Error: Team name already exists",
+    //     existingTeam
+    //   );
+    //   responseHandler(
+    //     res,
+    //     400,
+    //     "Team name already exists. Please choose another."
+    //   );
+    //   return;
+    // }
 
     const creatorUser = await User.findById(userId);
     if (!creatorUser) {
-      console.log("saveTeamName - Error: User not found for ID", userId);
       responseHandler(res, 404, "User not found");
       return;
     }
@@ -118,156 +117,6 @@ export const saveTeamName = async (
   }
 };
 
-// export const saveTeamName = async (
-//   req: Request,
-//   res: Response
-// ): Promise<void> => {
-//   const { teamName, teamId } = req.body;
-//   const userId = req.userId;
-//   console.log("saveTeamName - Input:", { userId, teamName, teamId });
-
-//   if (!teamName || typeof teamName !== "string" || teamName.trim() === "") {
-//     console.log("saveTeamName - Error: Invalid team name");
-//     responseHandler(
-//       res,
-//       400,
-//       "Team name is required and must be a non-empty string"
-//     );
-//     return;
-//   }
-
-//   try {
-//     const existingTeam = await Team.findOne({ teamName });
-//     if (existingTeam) {
-//       console.log(
-//         "saveTeamName - Error: Team name already exists",
-//         existingTeam
-//       );
-//       responseHandler(
-//         res,
-//         400,
-//         "Team name already exists. Please choose another."
-//       );
-//       return;
-//     }
-
-//     const creatorUser = await User.findById(userId);
-//     if (!creatorUser) {
-//       console.log("saveTeamName - Error: User not found for ID", userId);
-//       responseHandler(res, 404, "User not found");
-//       return;
-//     }
-
-//     const team = new Team({
-//       teamName: teamName.trim(),
-//       teamId: teamId || new mongoose.Types.ObjectId().toString(),
-//       addedOn: new Date().toLocaleDateString("en-US"),
-//       createdBy: userId,
-//       members: [],
-//     });
-
-//     const savedTeam = await team.save();
-//     console.log(
-//       "saveTeamName - Team saved:",
-//       JSON.stringify(savedTeam, null, 2)
-//     );
-
-//     const updatedUser = await User.findByIdAndUpdate(
-//       userId,
-//       { teamId: savedTeam._id },
-//       { new: true }
-//     );
-//     console.log(
-//       "saveTeamName - Updated user with teamId:",
-//       JSON.stringify(updatedUser, null, 2)
-//     );
-
-//     if (!updatedUser) {
-//       console.log("saveTeamName - Error: Failed to update user with teamId");
-//       responseHandler(res, 500, "Failed to update user with teamId");
-//       return;
-//     }
-
-//     responseHandler(
-//       res,
-//       201,
-//       "Team name saved successfully. Proceed to set primary usage.",
-//       "success",
-//       {
-//         teamName: savedTeam.teamName,
-//         teamId: savedTeam.id.toString(),
-//         createdBy: savedTeam.createdBy,
-//         members: savedTeam.members,
-//         addedOn: savedTeam.addedOn,
-//         createdAt: savedTeam.createdAt,
-//         updatedAt: savedTeam.updatedAt,
-//         _id: savedTeam.id.toString(),
-//       }
-//     );
-//   } catch (error) {
-//     console.error("saveTeamName - Error:", error);
-//     responseHandler(res, 500, "Internal server error");
-//   }
-// };
-// STEP 2: Update Primary Usage
-
-// export const updatePrimaryUsage = async (
-//   req: Request,
-//   res: Response
-// ): Promise<void> => {
-//   const { primaryUsage, teamId } = req.body;
-//   const userId = req.userId;
-//   console.log("updatePrimaryUsage - Input:", { userId, primaryUsage, teamId });
-
-//   const allowedValues = ["Only Buying", "Buying and Selling"];
-//   if (!primaryUsage || !allowedValues.includes(primaryUsage)) {
-//     responseHandler(
-//       res,
-//       400,
-//       "Primary usage must be one of: Only Buying, Buying and Selling"
-//     );
-//     return;
-//   }
-//   if (!teamId || typeof teamId !== "string") {
-//     responseHandler(res, 400, "Team ID is required");
-//     return;
-//   }
-
-//   try {
-//     const team = await Team.findOneAndUpdate(
-//       { _id: teamId, createdBy: userId },
-//       { primaryUsage },
-//       { new: true, runValidators: true }
-//     );
-//     console.log("updatePrimaryUsage - Found team:", team);
-
-//     if (!team) {
-//       responseHandler(res, 404, "Team not found");
-//       return;
-//     }
-
-//     responseHandler(
-//       res,
-//       200,
-//       "Primary usage set successfully. Proceed to add your team members.",
-//       "success",
-//       {
-//         teamId: team.id.toString(),
-//         teamName: team.teamName,
-//         primaryUsage: team.primaryUsage,
-//         createdBy: team.createdBy,
-//         members: team.members,
-//         addedOn: team.addedOn,
-//         createdAt: team.createdAt,
-//         updatedAt: team.updatedAt,
-//         _id: team.id.toString(),
-//       }
-//     );
-//   } catch (error) {
-//     console.error("updatePrimaryUsage - Error:", error);
-//     responseHandler(res, 500, "Internal server error");
-//   }
-// };
 export const updatePrimaryUsage = async (
   req: Request,
   res: Response
@@ -540,7 +389,7 @@ export const acceptInvitation = async (req: Request, res: Response) => {
 
     // Hash password
     console.log("AcceptInvitation - Hashing password");
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // const hashedPassword = await bcrypt.hash(password, 10);
 
     // Find or create user
     let user = await User.findOne({ email: decoded.email });
@@ -555,7 +404,7 @@ export const acceptInvitation = async (req: Request, res: Response) => {
         firstName,
         lastName,
         email: decoded.email,
-        password: hashedPassword,
+        password,
         roles: decoded.roles || [],
         teamId: new mongoose.Types.ObjectId(decoded.teamId),
         companyName: companyName,
@@ -567,7 +416,7 @@ export const acceptInvitation = async (req: Request, res: Response) => {
       console.log("AcceptInvitation - Updating existing user");
       user.firstName = firstName;
       user.lastName = lastName;
-      user.password = hashedPassword;
+      user.password = password;
       if (decoded.roles && Array.isArray(decoded.roles)) {
         decoded.roles.forEach((role) => {
           if (!user!.roles.includes(role)) {
