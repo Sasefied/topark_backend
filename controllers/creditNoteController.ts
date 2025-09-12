@@ -105,6 +105,7 @@ const getActiveCreditNotes = asyncHandler(
       const pipeline: any[] = [
         {
           $match: {
+            userId: new mongoose.Types.ObjectId(req.userId),
             endDate: { $gte: new Date() },
           },
         },
@@ -202,6 +203,11 @@ const getAllCreditNotes = asyncHandler(
 
     try {
       const pipeline: any[] = [
+         {
+          $match: {
+            userId: new mongoose.Types.ObjectId(req.userId)
+          },
+        },
         {
           $lookup: {
             from: "clients",
