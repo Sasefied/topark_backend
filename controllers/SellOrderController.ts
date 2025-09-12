@@ -589,71 +589,45 @@ const searchProductCode = asyncHandler(
 
 
 
-
 const createSellOrder = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { orderItems, clientId, shipToday } = req.body;
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
-
     const session = await mongoose.startSession();
     await session.startTransaction();
 
     try {
       let total = 0;
-      const sellOrderItems = [];
+      const sellOrderItems: any[] = [];
 
-      // Validate all items and prepare order items
       for (const order of orderItems) {
         const { inventoryId, productCode, quantity, sellPrice } = order;
 
-        // 1. Verify product exists
-        const product = await AdminProduct.findOne({ productCode }).session(session);
-        if (!product) {
+        const product = await AdminProduct.findOne({ productCode }).session(
+          session
+        );
+        if (!product)
           throw new BadRequestError(`Invalid product code: ${productCode}`);
-        }
 
-        // 2. Verify inventory exists
         const inventory = await Inventory.findOne({
           _id: inventoryId,
           adminProductId: product._id,
         }).session(session);
+        if (!inventory)
+          throw new BadRequestError(`Inventory not found for ${productCode}`);
 
-        if (!inventory) {
-          throw new BadRequestError(`Inventory not found for product ${productCode}`);
-        }
-
-        // 3. Calculate total
         total += sellPrice * quantity;
 
-        // 4. Prepare order item
         sellOrderItems.push({
           inventoryId,
           quantity,
           sellPrice,
+          productName: product.productName,
         });
 
-        // 5. Update inventory (allow negative stock)
         inventory.qtyInStock -= quantity;
         await inventory.save({ session });
-        if (inventory.qtyInStock < 0) {
-          console.warn(
-            `Inventory for ${productCode} is now negative: ${inventory.qtyInStock}`
-          );
-          // Optionally, flag the order for review or log for backorder
-        }
       }
 
-      // Check for negative stock
-      let hasNegativeStock = false;
-      for (const item of sellOrderItems) {
-        const inventory = await Inventory.findById(item.inventoryId).session(session);
-        if (inventory && inventory.qtyInStock < 0) {
-          hasNegativeStock = true;
-          break;
-        }
-      }
-
-      // Create the order with ORDER_PRINTED status
       const lastOrderNumber = await SellOrder.findOne(
         {},
         { orderNumber: 1 },
@@ -668,45 +642,95 @@ const createSellOrder = asyncHandler(
               clientId,
               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
               total,
-              outstandingTotal: total,
               shipToday,
-              hasNegativeStock,
-              status: OrderStatusEnum.ORDER_PRINTED, // Explicitly set status
+              outstandingTotal: total,
             },
           ],
           { session }
         )
       )[0];
 
-      // Create order items
       const sellOrderItemDocs = sellOrderItems.map((item) => ({
         ...item,
-        orderId: newOrder.id,
-        status: OrderStatusEnum.ORDER_PRINTED, // Set order item status to ORDER_PRINTED
+        orderId: newOrder._id,
       }));
-
       await SellOrderItem.insertMany(sellOrderItemDocs, { session });
 
       await session.commitTransaction();
 
-      const createdOrder = await SellOrder.findById(newOrder.id)
-        .populate("clientId", "clientName")
-        .lean();
+      const client = await Client.findById(clientId).select("clientName clientEmail deliveryAddress").session(session);
+      if (!client) {
+        throw new BadRequestError(`Client not found for ${clientId}`);
+      }
 
-      responseHandler(
-        res,
-        200,
-        "Order created successfully",
-        "success",
-        createdOrder
-      );
+      // ✅ Generate Invoice
+      const invoicePath = await generateInvoice({
+        orderNumber: newOrder.orderNumber,
+        clientName: client.clientName,
+        clientEmail: client.clientEmail,
+        clientAddress: client.deliveryAddress,
+        items: sellOrderItems,
+        total,
+      });
+
+      const invoiceUrl = `${req.protocol}://${req.hostname}:${process.env.PORT}/${`invoice_${newOrder.orderNumber}.pdf`}`;
+   console.log("invoice====", invoiceUrl)
+      newOrder.invoiceUrl = invoiceUrl;
+      await newOrder.save();
+
+      await sendEmail({
+        to: client.clientEmail,
+        // to: "saifmd9536@gmail.com",
+        subject: `Invoice for Order #${newOrder.orderNumber}`,
+        html: `
+          <p>Dear ${client.clientName},</p>
+          <p>Thank you for your order! Please find your invoice for Order #${newOrder.orderNumber} attached.</p>
+
+          <h3>Order Details:</h3>
+          <table border="1" cellspacing="0" cellpadding="6">
+          <thead>
+          <tr>
+            <th>Product</th>
+            <th>Quantity</th>
+            <th>Sell Price</th>
+            <th>Subtotal</th>
+          </tr>
+          </thead>
+          <tbody>
+          ${sellOrderItems
+            .map(
+              (item) =>
+                `<tr>
+              <td>${item.productName}</td>
+              <td>${item.quantity}</td>
+              <td>${item.sellPrice}</td>
+              <td>${(item.quantity * item.sellPrice).toFixed(2)}</td>
+            </tr>`
+            )
+            .join("")}
+          <tr>
+            <td colspan="3"><strong>Total</strong></td>
+            <td><strong>${total.toFixed(2)}</strong></td>
+          </tr>
+          </tbody>
+          </table>
+          <p>Shipping: ${shipToday ? "Ship today" : "Standard shipping"}</p>
+
+          <p>If you have any questions, please reply to this email.</p>
+          <p>Best regards,<br/>Your Company Name</p>
+        `,
+        attachments: [{
+          filename: `invoice-${newOrder.orderNumber}.pdf`,
+          path: invoicePath
+        }],
+      });
+
+      responseHandler(res, 200, "Order created successfully", "success", {invoice:invoiceUrl});
     } catch (error) {
-      console.error("Error in createSellOrder:", error);
       await session.abortTransaction();
       next(error);
     } finally {
       await session.endSession();
-      console.log("Session ended");
     }
   }
 );
