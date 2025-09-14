@@ -30,15 +30,15 @@ const getAllLogisticOrders = async (req: Request, res: Response) => {
 
     const orderAggregate = Order.aggregate([
       {
-     $match: {
-               userId: new Types.ObjectId(req.userId)
-     }
+        $match: {
+          userId: new Types.ObjectId(req.userId),
+        },
       },
       {
         $lookup: {
           from: "clients",
           localField: "clientId",
-          foreignField: "_id",
+          foreignField: "userId",
           as: "client",
         },
       },
@@ -396,7 +396,7 @@ const receivedOkLogisticOrderItem = asyncHandler(
       await Inventory.create(
         [
           {
-            userId: req.userId,
+            userId: inventory.clientId,
             clientId: inventory.clientId,
             adminProductId: inventory.adminProductId,
             grade: inventory.grade,
@@ -417,6 +417,15 @@ const receivedOkLogisticOrderItem = asyncHandler(
         {
           $set: {
             status: OrderItemStatusEnum.RECEIVE_OK,
+          },
+        }
+      ).session(session);
+
+      await Order.updateOne(
+        { _id: orderItem.orderId },
+        {
+          $set: {
+            orderStatus: "Delivered",
           },
         }
       ).session(session);

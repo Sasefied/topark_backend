@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 export interface IClient extends Document {
   _id: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
   clientId: string;
   clientName: string;
   workanniversary: Date | null;
@@ -30,6 +31,7 @@ export interface IClient extends Document {
 
 const clientSchema = new Schema<IClient>(
   {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     clientId: { type: String, required: true, unique: true },
     clientName: { type: String, required: true },
     workanniversary: { type: Date, default: null },

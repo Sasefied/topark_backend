@@ -103,6 +103,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     // console.log("isMatch", isMatch);
 
     const newClient = new Client({
+      userId: user._id,
       clientId: companyReferenceNumber,
       clientName: `${firstName} ${lastName}`.trim(),
       registeredName: companyName,

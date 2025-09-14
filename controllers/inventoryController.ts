@@ -135,7 +135,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
 
     await Inventory.create({
       userId: req.userId,
-      clientId,
+      clientId: req.userId,
       adminProductId,
       grade: grade.toUpperCase(),
       pricePerUnit,
@@ -162,7 +162,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
 
 const getAllProductNames: RequestHandler = async (req, res) => {
   try {
-    const products = await AdminProduct.find().select("_id productName");
+    const products = await AdminProduct.find().select("_id productName productCode");
     const productNames = products.map((product) => ({
       id: product.id.toString(),
       name: product.productName,

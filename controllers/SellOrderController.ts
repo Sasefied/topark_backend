@@ -587,8 +587,6 @@ const searchProductCode = asyncHandler(
   }
 );
 
-
-
 const createSellOrder = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { orderItems, clientId, shipToday } = req.body;
@@ -658,7 +656,9 @@ const createSellOrder = asyncHandler(
 
       await session.commitTransaction();
 
-      const client = await Client.findById(clientId).select("clientName clientEmail deliveryAddress").session(session);
+      const client = await Client.findById(clientId)
+        .select("clientName clientEmail deliveryAddress")
+        .session(session);
       if (!client) {
         throw new BadRequestError(`Client not found for ${clientId}`);
       }
@@ -673,8 +673,12 @@ const createSellOrder = asyncHandler(
         total,
       });
 
-      const invoiceUrl = `${req.protocol}://${req.hostname}:${process.env.PORT}/${`invoice_${newOrder.orderNumber}.pdf`}`;
-   console.log("invoice====", invoiceUrl)
+      // const invoiceUrl = `${req.protocol}://${req.hostname}:${process.env.PORT}/${`invoice_${newOrder.orderNumber}.pdf`}`;
+      const invoiceUrl =
+        process.env.NODE_ENV === "production"
+          ? `https://topark-backend.onrender.com/invoice_${newOrder.orderNumber}.pdf`
+          : `http://localhost:${process.env.PORT}/invoice_${newOrder.orderNumber}.pdf`;
+
       newOrder.invoiceUrl = invoiceUrl;
       await newOrder.save();
 
@@ -719,13 +723,17 @@ const createSellOrder = asyncHandler(
           <p>If you have any questions, please reply to this email.</p>
           <p>Best regards,<br/>Your Company Name</p>
         `,
-        attachments: [{
-          filename: `invoice-${newOrder.orderNumber}.pdf`,
-          path: invoicePath
-        }],
+        attachments: [
+          {
+            filename: `invoice-${newOrder.orderNumber}.pdf`,
+            path: invoicePath,
+          },
+        ],
       });
 
-      responseHandler(res, 200, "Order created successfully", "success", {invoice:invoiceUrl});
+      responseHandler(res, 200, "Order created successfully", "success", {
+        invoice: invoiceUrl,
+      });
     } catch (error) {
       await session.abortTransaction();
       next(error);
@@ -1042,7 +1050,6 @@ const getAllSellOrder = asyncHandler(
     }
   }
 );
-
 
 const getSellOrderById = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
