@@ -151,37 +151,65 @@ export const addClientToUser = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { clientId } = req.body;
+    const { clientId, client: clientData } = req.body;
     const userId = req.userId;
 
-    if (!userId || !clientId) {
-      responseHandler(res, 400, "Missing userId or clientId", "error");
+    console.log("addClientToUser - Request body:", req.body);
+
+    // Basic validation
+    if (!userId || !clientId || !Array.isArray(clientData)) {
+      responseHandler(res, 400, "Missing required fields", "error");
       return;
     }
 
     if (!Types.ObjectId.isValid(clientId)) {
-      responseHandler(res, 400, "Invalid clientId format", "error");
+      responseHandler(res, 400, "Invalid clientId", "error");
       return;
     }
 
-    // Verify the client exists and has valid data
-    const client = await Client.findById(clientId);
-    if (!client || !client.clientName || !client.clientId) {
-      responseHandler(res, 404, "Client not found or invalid data", "error");
+    // Optional: validate that client exists
+    const existingClient = await Client.findById(clientId);
+    if (!existingClient) {
+      responseHandler(res, 404, "Client not found", "error");
       return;
     }
 
-    // Update only the requesting user's MyClient document
+    // Validate each item in clientData
+    const validClientEntries = clientData
+      .filter(
+        (entry) =>
+          Types.ObjectId.isValid(entry.userId) &&
+          Types.ObjectId.isValid(entry.clientId)
+      )
+      .map((entry) => ({
+        userId: new Types.ObjectId(entry.userId),
+        clientId: new Types.ObjectId(entry.clientId),
+      }));
+
+    if (validClientEntries.length === 0) {
+      responseHandler(res, 400, "No valid client entries", "error");
+      return;
+    }
+
+    // Update MyClient document
     const updatedMyClient = await MyClient.findOneAndUpdate(
       { userId: userId.toString() },
-      { $addToSet: { clientId: new Types.ObjectId(clientId) } },
+      {
+        $addToSet: {
+          clientId: new Types.ObjectId(clientId), // Add to flat array
+          client: { $each: validClientEntries }, // Add to nested array
+        },
+      },
       { upsert: true, new: true }
-    ).populate("clientId");
+    )
+      .populate("clientId")
+      .populate("client.clientId")
+      .populate("client.userId");
 
     responseHandler(
       res,
       200,
-      "Client added to user successfully",
+      "Client(s) added successfully",
       "success",
       updatedMyClient
     );
