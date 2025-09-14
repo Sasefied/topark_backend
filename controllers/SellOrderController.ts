@@ -33,8 +33,8 @@ const generateInvoice = async (data: InvoiceData): Promise<string> => {
   const { orderNumber, clientName, clientEmail, clientAddress, items, total } =
     data;
 
-  const invoiceDir = path.join(__dirname, "../invoices");
-  if (!fs.existsSync(invoiceDir)) fs.mkdirSync(invoiceDir);
+  const invoiceDir = path.resolve(process.cwd(), "invoices");
+  if (!fs.existsSync(invoiceDir)) fs.mkdirSync(invoiceDir, { recursive: true });
 
   const filePath = path.join(invoiceDir, `invoice_${orderNumber}.pdf`);
 

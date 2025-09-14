@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node dist/index.js",
     "dev": "cross-env NODE_ENV=development nodemon api/index.ts",
-    "build": "tsc"
+    "build": "tsc && copyfiles -u 1 src/invoices dist/invoices"
   },
   "author": "",
   "license": "ISC",
@@ -52,6 +52,7 @@
     "@types/pdfkit": "^0.17.2",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "copyfiles": "^2.4.1",
     "cross-env": "^7.0.3",
     "nodemon": "^3.1.4",
     "prettier": "^3.6.2",
