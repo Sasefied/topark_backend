@@ -44,62 +44,87 @@ export const saveTeamName = async (
   }
 
   try {
-    // const existingTeam = await Team.findOne({teamName });
-    // if (existingTeam) {
-    //   console.log(
-    //     "saveTeamName - Error: Team name already exists",
-    //     existingTeam
-    //   );
-    //   responseHandler(
-    //     res,
-    //     400,
-    //     "Team name already exists. Please choose another."
-    //   );
-    //   return;
-    // }
-
     const creatorUser = await User.findById(userId);
     if (!creatorUser) {
+      console.log("saveTeamName - Error: User not found");
       responseHandler(res, 404, "User not found");
       return;
     }
 
-    const team = await Team.findById(teamId);
-    if (!team) {
-      responseHandler(res, 400, "Team not found.");
-      return;
-    }
+    const sanitizedTeamName = teamName.trim().toLowerCase(); // Normalize team name for comparison
+    let savedTeam;
 
-    team.teamName = teamName.trim();
+    if (teamId) {
+      // Update existing team
+      const team = await Team.findById(teamId);
+      if (!team) {
+        console.log("saveTeamName - Error: Team not found for teamId", teamId);
+        responseHandler(res, 404, "Team not found.");
+        return;
+      }
 
-    const savedTeam = await team.save();
-    console.log(
-      "saveTeamName - Team saved:",
-      JSON.stringify(savedTeam, null, 2)
-    );
 
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { teamId: savedTeam._id },
-      { new: true }
-    );
-    console.log(
-      "saveTeamName - Updated user:",
-      JSON.stringify(updatedUser, null, 2)
-    );
 
-    if (!updatedUser) {
-      console.log("saveTeamName - Error: Failed to update user with teamId");
-      responseHandler(res, 500, "Failed to update user with teamId");
-      return;
+      team.teamName = teamName.trim(); // Store original case in database
+      savedTeam = await team.save();
+      console.log(
+        "saveTeamName - Team updated:",
+        JSON.stringify(savedTeam, null, 2)
+      );
+    } else {
+      // Check if team name already exists (case-insensitive)
+      const existingTeam = await Team.findOne({
+        teamName: { $regex: new RegExp(`^${sanitizedTeamName}$`, "i") },
+      });
+      if (existingTeam) {
+        console.log(
+          "saveTeamName - Error: Team name already exists",
+          existingTeam
+        );
+        responseHandler(
+          res,
+          400,
+          "Team name already exists. Please choose another."
+        );
+        return;
+      }
+
+      // Create new team
+      const newTeam = new Team({
+        teamName: teamName.trim(), // Store original case in database
+        createdBy: userId,
+        members: [],
+        addedOn: new Date(),
+      });
+      savedTeam = await newTeam.save();
+      console.log(
+        "saveTeamName - Team created:",
+        JSON.stringify(savedTeam, null, 2)
+      );
+
+      // Update user with the new teamId
+      const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { teamId: savedTeam._id },
+        { new: true }
+      );
+      console.log(
+        "saveTeamName - Updated user:",
+        JSON.stringify(updatedUser, null, 2)
+      );
+
+      if (!updatedUser) {
+        console.log("saveTeamName - Error: Failed to update user with teamId");
+        responseHandler(res, 500, "Failed to update user with teamId");
+        return;
+      }
     }
 
     responseHandler(
       res,
       201,
-      "Team name saved successfully. Proceed to set primary usage.",
+      teamId ? "Team name updated successfully." : "Team created successfully.",
       "success",
-      // savedTeam,
       {
         teamName: savedTeam.teamName,
         teamId: savedTeam.id.toString(),
