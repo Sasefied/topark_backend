@@ -11,13 +11,12 @@ const excludeId = (doc: any) => {
   return rest;
 };
 
-export const createClient = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+
+export const createClient = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       clientId,
+      userId, // Add userId to destructured fields
       clientName,
       workanniversary,
       clientEmail,
@@ -25,14 +24,15 @@ export const createClient = async (
       registeredAddress,
       deliveryAddress,
       clientNotes,
-      creditLimit
+      creditLimit,
+      creditLimitPeriod,
     } = req.body;
 
-    if (!clientId || !clientName || !clientEmail.trim() || !registeredName) {
+    if (!clientId || !clientName || !clientEmail?.trim() || !registeredName || !userId) {
       responseHandler(
         res,
         400,
-        "Required fields: clientId, clientName, clientEmail, registeredName",
+        "Required fields: clientId, clientName, clientEmail, registeredName, userId",
         "error"
       );
       return;
@@ -82,8 +82,15 @@ export const createClient = async (
       return;
     }
 
+    // Validate userId matches createdBy
+    if (userId !== createdBy) {
+      responseHandler(res, 403, "User ID does not match authenticated user", "error");
+      return;
+    }
+
     const newClient = new Client({
       clientId,
+      userId, // Use userId from request body
       clientName,
       workanniversary: workanniversary ? new Date(workanniversary) : null,
       clientEmail,
@@ -92,7 +99,9 @@ export const createClient = async (
       deliveryAddress: deliveryAddress || "",
       clientNotes: clientNotes || "",
       companyReferenceNumber: clientId,
-      creditLimit
+      creditLimit: creditLimit || 0,
+      creditLimitPeriod: creditLimitPeriod || "",
+      createdBy, // Keep createdBy for backward compatibility
     });
 
     await newClient.save();
@@ -113,6 +122,10 @@ export const createClient = async (
           deliveryAddress || "Not provided"
         }</p>
         <p><strong>Notes:</strong> ${clientNotes || "None"}</p>
+        <p><strong>Credit Limit:</strong> ${creditLimit || 0}</p>
+        <p><strong>Credit Limit Period:</strong> ${
+          creditLimitPeriod || "Not specified"
+        }</p>
         <p>If you have any questions, please contact our support team.</p>
         <hr style="margin-top: 20px; border: none; border-top: 1px solid #eee;">
         <p style="font-size: 12px; color: #999;">© ${new Date().getFullYear()} Toprak Team. All rights reserved.</p>
@@ -141,7 +154,12 @@ export const createClient = async (
       message: error.message,
       stack: error.stack,
       body: req.body,
+      validationErrors: error.errors || null,
     });
+    if (error.name === "ValidationError") {
+      responseHandler(res, 400, `Validation error: ${error.message}`, "error");
+      return;
+    }
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
