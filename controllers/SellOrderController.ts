@@ -1119,6 +1119,7 @@ const getSellOrderById = asyncHandler(
           _id: 1,
           orderNumber: 1,
           total: 1,
+          invoiceUrl: 1,
           createdAt: 1,
           "client._id": 1,
           "client.clientName": 1,

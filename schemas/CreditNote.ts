@@ -2,13 +2,14 @@ import mongoose, { Document, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 export interface ICreditNote extends Document {
-  userId: mongoose.Schema.Types.ObjectId;
-  orderId: mongoose.Schema.Types.ObjectId;
-  clientId: mongoose.Schema.Types.ObjectId;
+  _id: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
+  orderId: mongoose.Types.ObjectId;
+  clientId: mongoose.Types.ObjectId;
   startDate: Date;
   endDate: Date;
-  orderNumber: number;
   total: number;
+  url?: string;
 }
 
 const creditNoteSchema: Schema<ICreditNote> = new Schema(
@@ -39,7 +40,10 @@ const creditNoteSchema: Schema<ICreditNote> = new Schema(
     total: {
       type: Number,
       required: true,
-    }
+    },
+    url: {
+      type: String,
+    },
   },
   { timestamps: true }
 );
