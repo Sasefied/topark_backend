@@ -267,7 +267,7 @@ export const getClientsForUser = async (
     }).populate({
       path: "clientId",
       select:
-        "clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
+        "clientId userId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
     });
 
     if (
