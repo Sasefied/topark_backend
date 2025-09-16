@@ -13,6 +13,7 @@ import fs from "fs";
 import path from "path";
 import sendEmail from "../utils/mail";
 import { OrderStatusEnum } from "../api/constants";
+import MyClientModel from "../schemas/MyClient";
 
 interface InvoiceItem {
   productName: string;
@@ -504,8 +505,43 @@ const searchAllClients = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { page = 1, limit = 10, query } = req.query;
 
+    const myClient = await MyClientModel.findOne({ userId: req.userId })
+      .select("clientId client")
+      .lean();
+
+    console.log("myClient:", myClient);
+    if (!myClient || !myClient.clientId || myClient.clientId.length === 0) {
+      // No clients associated with this user, return empty results
+      return responseHandler(res, 200, "No clients found", "success", {
+        clients: [],
+        totalClients: 0,
+        page: 1,
+        limit: 10,
+        totalPages: 0,
+        pagingCounter: 1,
+        hasPrevPage: false,
+        hasNextPage: false,
+        prevPage: null,
+        nextPage: null,
+      });
+    }
+
+    const allowedClientIds = myClient?.client?.map(
+      (client: any) => client.clientId
+    );
+
+    console.log("allowedClientIds:", allowedClientIds);
+    console.log("userId", req.userId);
+
     const clientAggregate = Client.aggregate([
-      { $match: { clientName: { $regex: query, $options: "i" } } },
+      {
+        $match: {
+          $and: [
+            { _id: { $in: allowedClientIds } },
+            { clientName: { $regex: query, $options: "i" } },
+          ],
+        },
+      },
       {
         $project: {
           _id: 1,
@@ -559,10 +595,10 @@ const searchProductCode = asyncHandler(
       },
       {
         $match: {
-          "adminProduct.productCode": {
-            $regex: query,
-            $options: "i",
-          },
+          $or: [
+            { "adminProduct.productName": { $regex: query, $options: "i" } },
+            { "adminProduct.productCode": { $regex: query, $options: "i" } },
+          ]
         },
       },
       {
@@ -620,6 +656,7 @@ const createSellOrder = asyncHandler(
           quantity,
           sellPrice,
           productName: product.productName,
+          outstandingPrice: quantity * sellPrice,
         });
 
         inventory.qtyInStock -= quantity;
