@@ -22,9 +22,12 @@ export interface IClient extends Document {
   } | null; // Allow null if createdBy is optional
   relatedClientIds: mongoose.Types.ObjectId[];
   creditLimit: {
-    amount: number;
-    period: 'day' | 'week' | 'month';
-  };
+  amount: { type: Number, default: 0 },
+  period: {
+    type: String,
+    enum: ['1', '7', '14', '30', '60', '90'],
+  },
+}
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -62,8 +65,7 @@ const clientSchema = new Schema<IClient>(
       amount: { type: Number, default: 0 },
       period: {
         type: String,
-        enum: ['day', 'week', 'month'],
-        default: 'day',
+        enum: ['1', '7', '14', '30', '60', '90'],
       },
     },
   },
