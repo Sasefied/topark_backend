@@ -1,9 +1,10 @@
-import { RequestHandler } from "express";
+import { Request, RequestHandler, Response } from "express";
 import mongoose, { Types } from "mongoose";
 import Inventory from "../schemas/Inventory";
 import { AdminProduct } from "../schemas/AdminProduct";
 import { responseHandler } from "../utils/responseHandler";
 import Order from "../schemas/Order";
+import asyncHandler from "express-async-handler";
 
 const getAllInventories: RequestHandler = async (req, res) => {
   try {
@@ -162,7 +163,9 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
 
 const getAllProductNames: RequestHandler = async (req, res) => {
   try {
-    const products = await AdminProduct.find().select("_id productName productCode");
+    const products = await AdminProduct.find().select(
+      "_id productName productCode"
+    );
     const productNames = products.map((product) => ({
       id: product.id.toString(),
       name: product.productName,
@@ -199,11 +202,7 @@ const getProductById: RequestHandler = async (req, res) => {
   }
 };
 
-
-
-
 const getDeliveredOrders: RequestHandler = async (req, res) => {
-  
   try {
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
       return responseHandler(res, 401, "Invalid or missing userId", "error");
@@ -248,7 +247,7 @@ const getDeliveredOrders: RequestHandler = async (req, res) => {
           as: "adminProducts",
         },
       },
-      
+
       {
         $set: {
           clientDetails: {
@@ -261,7 +260,9 @@ const getDeliveredOrders: RequestHandler = async (req, res) => {
           adminProducts: {
             $cond: {
               if: { $eq: ["$adminProducts", []] },
-              then: [{ productName: "Unknown Product", size: "N/A", color: "N/A" }],
+              then: [
+                { productName: "Unknown Product", size: "N/A", color: "N/A" },
+              ],
               else: "$adminProducts",
             },
           },
@@ -276,10 +277,12 @@ const getDeliveredOrders: RequestHandler = async (req, res) => {
       {
         $project: {
           _id: 1,
+          inventoryId: {$first: "$inventory._id"},
           invoiceNumber: 1,
           orderStatus: 1,
           total: 1,
           orderItems: 1,
+          tradingPrice: {$first: "$inventory.tradingPrice"},
           clientDetails: { clientName: 1 },
           adminProducts: { productName: 1, size: 1, color: 1 },
           inventory: { ccy: 1, sourceCountry: 1, grade: 1 },
@@ -287,18 +290,22 @@ const getDeliveredOrders: RequestHandler = async (req, res) => {
       },
     ]);
 
-    const deliveredOrders = await (Order as any).aggregatePaginate(orderAggregate, {
-      
-      customLabels: {
-        docs: "orders",
-        totalDocs: "totalOrders",
-      },
-    });
+    const deliveredOrders = await (Order as any).aggregatePaginate(
+      orderAggregate,
+      {
+        customLabels: {
+          docs: "orders",
+          totalDocs: "totalOrders",
+        },
+      }
+    );
 
     // Ensure orderItems is always an array
     deliveredOrders.orders = deliveredOrders.orders.map((order: any) => ({
       ...order,
-      orderItems: Array.isArray(order.orderItems) ? order.orderItems : [order.orderItems],
+      orderItems: Array.isArray(order.orderItems)
+        ? order.orderItems
+        : [order.orderItems],
     }));
 
     responseHandler(
@@ -323,19 +330,25 @@ const getDeliveredOrders: RequestHandler = async (req, res) => {
   }
 };
 
+const updateTradingPrice = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { tradingPrice } = req.body;
 
+  await Inventory.updateOne(
+    { _id: id },
+    {
+      tradingPrice,
+    }
+  );
 
+  responseHandler(res, 200, "Trading price updated successfully", "success");
+});
 
 export {
-  
   getAllInventories,
   addStockOnInventory,
   getAllProductNames,
   getProductById,
-  getDeliveredOrders
+  getDeliveredOrders,
+  updateTradingPrice
 };
-
-
-
-
-

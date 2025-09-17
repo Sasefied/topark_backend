@@ -222,6 +222,68 @@ export const addClientToUser = async (
   }
 };
 
+// export const getClientsForUser = async (
+//   req: Request,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     const userId = req.userId;
+
+//     console.log("getClientsForUser - userId:", userId);
+
+//     if (!userId) {
+//       responseHandler(res, 400, "Missing userId", "error");
+//       return;
+//     }
+
+//     // Verify user exists
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       console.warn("getClientsForUser - User not found:", userId);
+//       responseHandler(res, 400, "Invalid user", "error");
+//       return;
+//     }
+
+//     const myClientDoc = await MyClient.findOne({
+//       userId: userId.toString(),
+//     }).populate({
+//       path: "clientId",
+//       select:
+//         "clientId userId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
+//     });
+
+//     if (
+//       !myClientDoc ||
+//       !myClientDoc.clientId ||
+//       myClientDoc.clientId.length === 0
+//     ) {
+//       responseHandler(res, 200, "No clients found for this user", "success", {
+//         count: 0,
+//         clients: [],
+//       });
+//       return;
+//     }
+
+//     // Validate populated clients
+//     const clients = myClientDoc.clientId.filter((client: any) => {
+//       if (!client.clientName || !client.clientId) {
+//         console.warn("getClientsForUser - Invalid client data:", client);
+//         return false;
+//       }
+//       return true;
+//     }) as unknown as IClient[];
+
+//     const count = clients.length;
+
+//     responseHandler(res, 200, "Clients fetched successfully", "success", {
+//       count,
+//       clients,
+//     });
+//   } catch (error: any) {
+//     responseHandler(res, 500, "Internal server error", "error");
+//   }
+// };
+
 export const getClientsForUser = async (
   req: Request,
   res: Response
@@ -264,14 +326,46 @@ export const getClientsForUser = async (
       return;
     }
 
-    // Validate populated clients
-    const clients = myClientDoc.clientId.filter((client: any) => {
-      if (!client.clientName || !client.clientId) {
-        console.warn("getClientsForUser - Invalid client data:", client);
-        return false;
-      }
-      return true;
-    }) as unknown as IClient[];
+    // Validate populated clients and include creditLimit
+    const clients = myClientDoc.clientId
+      .filter((client: any) => {
+        if (!client.clientName || !client.clientId) {
+          console.warn("getClientsForUser - Invalid client data:", client);
+          return false;
+        }
+        return true;
+      })
+      .map((client: any) => ({
+        _id: client._id.toString(),
+        userId: client.userId,
+        clientId: client.clientId,
+        clientName: client.clientName,
+        clientEmail: client.clientEmail,
+        registeredName: client.registeredName,
+        workanniversary: client.workanniversary
+          ? client.workanniversary.toISOString()
+          : null,
+        registeredAddress: client.registeredAddress,
+        deliveryAddress: client.deliveryAddress,
+        clientNotes: client.clientNotes,
+        companyReferenceNumber: client.companyReferenceNumber,
+        creditLimit: client.creditLimit
+          ? {
+              amount: client.creditLimit.amount || 0,
+              period: client.creditLimit.period || null,
+            }
+          : { amount: 0, period: null },
+        createdBy: client.createdBy
+          ? {
+              _id: client.createdBy._id.toString(),
+              firstName: client.createdBy.firstName || "",
+              lastName: client.createdBy.lastName || "",
+              companyName: client.createdBy.companyName || "",
+              companyReferenceNumber:
+                client.createdBy.companyReferenceNumber || "",
+            }
+          : null,
+      })) as IClient[];
 
     const count = clients.length;
 
@@ -280,6 +374,7 @@ export const getClientsForUser = async (
       clients,
     });
   } catch (error: any) {
+    console.error("getClientsForUser - Error:", error);
     responseHandler(res, 500, "Internal server error", "error");
   }
 };

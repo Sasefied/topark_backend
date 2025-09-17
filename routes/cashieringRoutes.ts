@@ -1,8 +1,7 @@
-
-
 import { Router } from "express";
 import {
   getAllCashieringOrders,
+  getAllCashieringOrdersCombined,
   getAllCashieringSellOrders,
   getCashieringOrderByIds,
   getCashieringSellOrderByIds,
@@ -15,6 +14,7 @@ import {
 const router = Router();
 
 router
+  .get("/all-combined-orders", getAllCashieringOrdersCombined)
   .get("/all-orders", getAllCashieringOrders)
   .get("/all-sell-orders", getAllCashieringSellOrders)
   .get("/search-orders/:query", searchCashieringOrders)
