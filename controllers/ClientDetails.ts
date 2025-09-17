@@ -126,7 +126,7 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
 
     const newClient = new Client({
       clientId,
-      userId,
+      userId:createdBy,
       clientName,
       workanniversary: workanniversary ? new Date(workanniversary) : null,
       clientEmail,
@@ -232,7 +232,8 @@ export const addClientToUser = async (
       .filter(
         (entry) =>
           Types.ObjectId.isValid(entry.userId) &&
-          Types.ObjectId.isValid(entry.clientId)
+          Types.ObjectId.isValid(entry.clientId) &&
+          entry.userId === userId
       )
       .map((entry) => ({
         userId: new Types.ObjectId(entry.userId),
@@ -328,7 +329,7 @@ export const getClientsForUser = async (
       })
       .map((client: any) => ({
         _id: client._id.toString(),
-        userId: client.userId ? client.userId.toString() : null,
+        userId: client.userId,
         clientId: client.clientId,
         clientName: client.clientName,
         clientEmail: client.clientEmail,
@@ -388,9 +389,14 @@ export const getAllClients = async (
     const clients = await Client.find({
       _id: { $nin: excludedClientIds },
       clientEmail: { $ne: req.userEmail },
+      userId: {$ne:null}
     }).select(
-      "clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber creditLimit createdBy" // Add creditLimit
-    );
+        "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber creditLimit createdBy"
+      )
+      .populate(
+        "createdBy",
+        "firstName lastName companyName companyReferenceNumber"
+      );
 
     // Validate clients and include creditLimit
     const validClients = clients
@@ -403,7 +409,7 @@ export const getAllClients = async (
       })
       .map((client) => ({
         _id: client._id.toString(),
-        userId: client.userId ? client.userId.toString() : null,
+        userId: client.userId.toString(),
         clientId: client.clientId,
         clientName: client.clientName,
         clientEmail: client.clientEmail,
@@ -587,7 +593,7 @@ export const updateClient = async (
     // Construct response with createdBy and creditLimit
     const clientData = {
       _id: client._id.toString(),
-         userId: client.userId ? client.userId.toString() : null,
+         userId: client.userId.toString() ,
       clientId: client.clientId,
       clientName: client.clientName,
       clientEmail: client.clientEmail,
