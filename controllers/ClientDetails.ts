@@ -25,7 +25,8 @@ export const createClient = async (
       registeredAddress,
       deliveryAddress,
       clientNotes,
-      creditLimit
+      companyReferenceNumber,
+      creditLimit,
     } = req.body;
 
     if (!clientId || !clientName || !clientEmail.trim() || !registeredName) {
@@ -91,8 +92,8 @@ export const createClient = async (
       registeredAddress: registeredAddress || "",
       deliveryAddress: deliveryAddress || "",
       clientNotes: clientNotes || "",
-      companyReferenceNumber: clientId,
-      creditLimit
+      companyReferenceNumber: companyReferenceNumber || clientId,
+      creditLimit,
     });
 
     await newClient.save();
@@ -113,6 +114,9 @@ export const createClient = async (
           deliveryAddress || "Not provided"
         }</p>
         <p><strong>Notes:</strong> ${clientNotes || "None"}</p>
+         <p><strong>Credit Limit Period:</strong> ${
+          creditLimit.period || "Not specified"
+        }</p>
         <p>If you have any questions, please contact our support team.</p>
         <hr style="margin-top: 20px; border: none; border-top: 1px solid #eee;">
         <p style="font-size: 12px; color: #999;">© ${new Date().getFullYear()} Toprak Team. All rights reserved.</p>
@@ -311,7 +315,7 @@ export const getClientsForUser = async (
     }).populate({
       path: "clientId",
       select:
-        "clientId userId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
+        "clientId userId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes creditLimit companyReferenceNumber createdBy",
     });
 
     if (

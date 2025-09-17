@@ -134,19 +134,45 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       return;
     }
 
-    await Inventory.create({
+    const existedInventoryProduct = await Inventory.findOne({
       userId: req.userId,
-      clientId: req.userId,
       adminProductId,
-      grade: grade.toUpperCase(),
-      pricePerUnit,
-      qtyInStock,
-      qtyIncoming,
-      sourceCountry: sourceCountry.toUpperCase(),
-      ccy: ccy.toUpperCase(),
-      buyingPrice,
-      tradingPrice,
     });
+
+    if (existedInventoryProduct) {
+      await Inventory.updateOne(
+        {
+          _id: existedInventoryProduct._id,
+        },
+        {
+          $inc: {
+            qtyInStock,
+            qtyIncoming,
+          },
+          $set: {
+            pricePerUnit,
+            sourceCountry,
+            ccy,
+            buyingPrice,
+            tradingPrice,
+          },
+        }
+      );
+    } else {
+      await Inventory.create({
+        userId: req.userId,
+        clientId,
+        adminProductId,
+        grade: grade.toUpperCase(),
+        pricePerUnit,
+        qtyInStock,
+        qtyIncoming,
+        sourceCountry: sourceCountry.toUpperCase(),
+        ccy: ccy.toUpperCase(),
+        buyingPrice,
+        tradingPrice,
+      });
+    }
 
     res.status(200).json({ message: "Stock added to inventory successfully" });
   } catch (error: any) {
@@ -277,12 +303,12 @@ const getDeliveredOrders: RequestHandler = async (req, res) => {
       {
         $project: {
           _id: 1,
-          inventoryId: {$first: "$inventory._id"},
+          inventoryId: { $first: "$inventory._id" },
           invoiceNumber: 1,
           orderStatus: 1,
           total: 1,
           orderItems: 1,
-          tradingPrice: {$first: "$inventory.tradingPrice"},
+          tradingPrice: { $first: "$inventory.tradingPrice" },
           clientDetails: { clientName: 1 },
           adminProducts: { productName: 1, size: 1, color: 1 },
           inventory: { ccy: 1, sourceCountry: 1, grade: 1 },
@@ -350,5 +376,5 @@ export {
   getAllProductNames,
   getProductById,
   getDeliveredOrders,
-  updateTradingPrice
+  updateTradingPrice,
 };
