@@ -66,6 +66,7 @@ export const createProduct = async (
       "productName",
       "size",
       "consTypes",
+      "productType",
     ];
     for (const field of requiredFields) {
       if (

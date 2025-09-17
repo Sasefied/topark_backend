@@ -3,7 +3,6 @@ import Color from "./adminProductColor";
 import Size from "./adminProductSize";
 
 export interface IAdminProduct extends Document {
-
   id: string;
   productName: string;
   normalizedProductName?: string;
@@ -14,6 +13,13 @@ export interface IAdminProduct extends Document {
   size: string;
   color?: string | null;
   consTypes: "Bought" | "Commission" | "Expected";
+  productType:
+    | "Fruits"
+    | "Vegetables"
+    | "Exotic Fruits"
+    | "Exotic Vegetables"
+    | "Flowers";
+    vat?: number;
   allowOversold: boolean;
   comments?: string;
   createdAt?: Date;
@@ -21,7 +27,6 @@ export interface IAdminProduct extends Document {
 }
 
 export const generateProductCode = async (
-  
   productName: string,
   variety?: string | null,
   retries = 5,
@@ -91,6 +96,19 @@ const AdminProductSchema = new Schema<IAdminProduct>(
       enum: ["Bought", "Commission", "Expected"],
       required: true,
     },
+    productType: {
+      type: String,
+      enum: [
+        "Fruits",
+        "Vegetables",
+        "Exotic Fruits",
+        "Exotic Vegetables",
+        "Flowers",
+      ],
+
+      required: true,
+    },
+    vat: {type: Number,required: true, default: false },
     allowOversold: { type: Boolean, required: true, default: false },
     comments: { type: String, required: false },
   },
