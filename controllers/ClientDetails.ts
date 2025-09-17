@@ -207,7 +207,7 @@ export const addClientToUser = async (
     const { clientId, client: clientData } = req.body;
     const userId = req.userId;
 
-    console.log("addClientToUser - Request body:", req.body);
+    console.log("addClientToUser - Request body:", req.body, req.userId);
 
     // Basic validation
     if (!userId || !clientId || !Array.isArray(clientData)) {
@@ -328,6 +328,7 @@ export const getClientsForUser = async (
       })
       .map((client: any) => ({
         _id: client._id.toString(),
+        userId: client.userId ? client.userId.toString() : null,
         clientId: client.clientId,
         clientName: client.clientName,
         clientEmail: client.clientEmail,
@@ -402,6 +403,7 @@ export const getAllClients = async (
       })
       .map((client) => ({
         _id: client._id.toString(),
+        userId: client.userId ? client.userId.toString() : null,
         clientId: client.clientId,
         clientName: client.clientName,
         clientEmail: client.clientEmail,
@@ -460,6 +462,7 @@ export const getClientById = async (
     // Ensure creditLimit is included in the response
     const clientData = {
       _id: client._id.toString(),
+      userId: client.userId ? client.userId.toString() : null,
       clientId: client.clientId,
       clientName: client.clientName,
       clientEmail: client.clientEmail,
@@ -584,6 +587,7 @@ export const updateClient = async (
     // Construct response with createdBy and creditLimit
     const clientData = {
       _id: client._id.toString(),
+         userId: client.userId ? client.userId.toString() : null,
       clientId: client.clientId,
       clientName: client.clientName,
       clientEmail: client.clientEmail,
