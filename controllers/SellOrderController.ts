@@ -609,7 +609,8 @@ const searchProductCode = asyncHandler(
           qtyInStock: 1,
           qtyIncoming: 1,
           pricePerUnit: 1,
-          tradingPrice: 1
+          tradingPrice: 1,
+          vat: "$adminProduct.vat"
         },
       },
     ]);
