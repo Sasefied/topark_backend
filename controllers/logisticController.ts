@@ -417,8 +417,8 @@ const receivedOkLogisticOrderItem = asyncHandler(
         await Inventory.create(
           [
             {
-              userId: inventory.clientId,
-              clientId: inventory.clientId,
+              userId: req.userId,
+              clientId: req.userId,
               adminProductId: inventory.adminProductId,
               grade: inventory.grade,
               pricePerUnit: orderItem.price,

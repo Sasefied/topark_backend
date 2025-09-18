@@ -161,7 +161,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
     } else {
       await Inventory.create({
         userId: req.userId,
-        clientId,
+        clientId: clientId || req.userId,
         adminProductId,
         grade: grade.toUpperCase(),
         pricePerUnit,

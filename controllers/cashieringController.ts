@@ -295,6 +295,207 @@ const getAllCashieringSellOrders = async (req: Request, res: Response) => {
   }
 };
 
+// const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
+//   try {
+//     const { page = 1, limit = 10 } = req.query;
+
+//     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
+//       return responseHandler(res, 401, "Invalid or missing userId", "error");
+//     }
+
+//     const userObjectId = new Types.ObjectId(req.userId);
+
+//     const combinedAggregate = Order.aggregate([
+//       // Base: Buy Orders
+//       {
+//         $match: {
+//           userId: userObjectId,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "orderitems",
+//           localField: "_id",
+//           foreignField: "orderId",
+//           as: "orderItems",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "inventories",
+//           localField: "orderItems.inventoryId",
+//           foreignField: "_id",
+//           as: "inventory",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "clients",
+//           localField: "inventory.clientId",
+//           foreignField: "userId",
+//           as: "clientDetails",
+//         },
+//       },
+//       {
+//         $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
+//       },
+//       {
+//         $set: {
+//           clientDetails: {
+//             $cond: {
+//               if: { $eq: ["$clientDetails", {}] },
+//               then: { clientName: "Unknown Client", clientId: null, email: null },
+//               else: "$clientDetails",
+//             },
+//           },
+//           orderType: "buy",
+//         },
+//       },
+//       { $addFields: { itemsCount: { $size: "$orderItems" } } },
+//       {
+//         $project: {
+//           _id: 1,
+//           invoiceNumber: "$invoiceNumber",
+//           total: 1,
+//           outstandingTotal: 1,
+//           createdAt: 1,
+//           itemsCount: 1,
+//           clientDetails: 1,
+//           orderType: 1,
+//         },
+//       },
+//       // Union with Sell Orders
+//       {
+//         $unionWith: {
+//           coll: "sellorders",
+//           pipeline: [
+//             { $match: { userId: userObjectId } },
+//             {
+//               $lookup: {
+//                 from: "sellorderitems",
+//                 localField: "_id",
+//                 foreignField: "orderId",
+//                 as: "orderItems",
+//               },
+//             },
+//             {
+//               $lookup: {
+//                 from: "inventories",
+//                 localField: "orderItems.inventoryId",
+//                 foreignField: "_id",
+//                 as: "inventory",
+//               },
+//             },
+//             {
+//               $lookup: {
+//                 from: "clients",
+//                 localField: "inventory.clientId",
+//                 foreignField: "userId",
+//                 as: "clientDetails",
+//               },
+//             },
+//             {
+//               $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
+//             },
+//             {
+//               $set: {
+//                 clientDetails: {
+//                   $cond: {
+//                     if: { $eq: ["$clientDetails", {}] },
+//                     then: { clientName: "Unknown Client", clientId: null, email: null },
+//                     else: "$clientDetails",
+//                   },
+//                 },
+//                 orderType: "sell",
+//               },
+//             },
+//             { $addFields: { itemsCount: { $size: "$orderItems" } } },
+//             {
+//               $project: {
+//                 _id: 1,
+//                 // Normalize invoice number between two collections
+//                 invoiceNumber: { $ifNull: ["$invoiceNumber", { $toString: "$orderNumber" }] },
+//                 total: 1,
+//                 outstandingTotal: 1,
+//                 createdAt: 1,
+//                 itemsCount: 1,
+//                 clientDetails: 1,
+//                 orderType: 1,
+//               },
+//             },
+//           ],
+//         },
+//       },
+//       // Group combined orders by client
+//       {
+//         $group: {
+//           _id: "$clientDetails.clientId",
+//           clientDetails: { $first: "$clientDetails" },
+//           orders: {
+//             $push: {
+//               _id: "$_id",
+//               type: "$orderType",
+//               invoiceNumber: "$invoiceNumber",
+//               total: "$total",
+//               outstandingTotal: "$outstandingTotal",
+//               createdAt: "$createdAt",
+//               numberOfItems: "$itemsCount",
+//             },
+//           },
+//           totalOrders: { $sum: 1 },
+//           totalAmount: { $sum: "$total" },
+//           totalOutstanding: { $sum: "$outstandingTotal" },
+//           totalItems: { $sum: "$itemsCount" },
+//         },
+//       },
+//       { $sort: { "clientDetails.clientName": 1 } },
+//       {
+//         $project: {
+//           _id: 0,
+//           clientId: "$_id",
+//           clientDetails: {
+//             clientName: "$clientDetails.clientName",
+//             clientId: { $ifNull: ["$clientDetails.clientId", null] },
+//             email: { $ifNull: ["$clientDetails.email", null] },
+//           },
+//           orders: 1,
+//           totalOrders: 1,
+//           totalAmount: 1,
+//           totalOutstanding: 1,
+//           totalItems: 1,
+//           orderDate: { $max: "$orders.createdAt" },
+//         },
+//       },
+//     ]);
+
+//     const result = await (Order as any).aggregatePaginate(combinedAggregate, {
+//       page: parseInt(page as string),
+//       limit: parseInt(limit as string),
+//       customLabels: { docs: "clients", totalDocs: "totalClients" },
+//     });
+
+//     return responseHandler(
+//       res,
+//       200,
+//       "Clients and their (buy + sell) orders fetched successfully",
+//       "success",
+//       result
+//     );
+//   } catch (error: any) {
+//     console.error("Error fetching combined cashiering orders:", {
+//       message: error.message,
+//       stack: error.stack,
+//       userId: req.userId,
+//     });
+//     return responseHandler(
+//       res,
+//       500,
+//       error.message || "Failed to fetch combined orders",
+//       "error"
+//     );
+//   }
+// };
+
 const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 10 } = req.query;
@@ -426,44 +627,22 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
           ],
         },
       },
-      // Group combined orders by client
-      {
-        $group: {
-          _id: "$clientDetails.clientId",
-          clientDetails: { $first: "$clientDetails" },
-          orders: {
-            $push: {
-              _id: "$_id",
-              type: "$orderType",
-              invoiceNumber: "$invoiceNumber",
-              total: "$total",
-              outstandingTotal: "$outstandingTotal",
-              createdAt: "$createdAt",
-              numberOfItems: "$itemsCount",
-            },
-          },
-          totalOrders: { $sum: 1 },
-          totalAmount: { $sum: "$total" },
-          totalOutstanding: { $sum: "$outstandingTotal" },
-          totalItems: { $sum: "$itemsCount" },
-        },
-      },
-      { $sort: { "clientDetails.clientName": 1 } },
+      // Sort by createdAt descending (most recent first)
+      { $sort: { createdAt: -1 } },
       {
         $project: {
-          _id: 0,
-          clientId: "$_id",
+          _id: 1,
+          invoiceNumber: 1,
+          total: 1,
+          outstandingTotal: 1,
+          createdAt: 1,
+          itemsCount: 1,
           clientDetails: {
             clientName: "$clientDetails.clientName",
             clientId: { $ifNull: ["$clientDetails.clientId", null] },
             email: { $ifNull: ["$clientDetails.email", null] },
           },
-          orders: 1,
-          totalOrders: 1,
-          totalAmount: 1,
-          totalOutstanding: 1,
-          totalItems: 1,
-          orderDate: { $max: "$orders.createdAt" },
+          orderType: 1,
         },
       },
     ]);
@@ -471,13 +650,13 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
     const result = await (Order as any).aggregatePaginate(combinedAggregate, {
       page: parseInt(page as string),
       limit: parseInt(limit as string),
-      customLabels: { docs: "clients", totalDocs: "totalClients" },
+      customLabels: { docs: "orders", totalDocs: "totalOrders" },
     });
 
     return responseHandler(
       res,
       200,
-      "Clients and their (buy + sell) orders fetched successfully",
+      "All (buy + sell) orders with client details fetched successfully",
       "success",
       result
     );
