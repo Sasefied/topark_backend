@@ -650,7 +650,7 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
     const result = await (Order as any).aggregatePaginate(combinedAggregate, {
       page: parseInt(page as string),
       limit: parseInt(limit as string),
-      customLabels: { docs: "orders", totalDocs: "totalOrders" },
+      customLabels: { docs: "clients", totalDocs: "totalClients" },
     });
 
     return responseHandler(
