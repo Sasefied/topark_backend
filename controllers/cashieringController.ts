@@ -722,6 +722,208 @@ const searchCashieringSellOrders = async (req: Request, res: Response) => {
   }
 };
 
+const searchCashieringOrdersCombined = async (req: Request, res: Response) => {
+  try {
+    const { query } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    if (!query || typeof query !== "string") {
+      return responseHandler(
+        res,
+        400,
+        "Invalid or missing search query",
+        "error"
+      );
+    }
+
+    const combinedAggregate = Order.aggregate([
+      // Base: Buy Orders
+      {
+        $lookup: {
+          from: "orderitems",
+          localField: "_id",
+          foreignField: "orderId",
+          as: "orderItems",
+        },
+      },
+      {
+        $lookup: {
+          from: "inventories",
+          localField: "orderItems.inventoryId",
+          foreignField: "_id",
+          as: "inventory",
+        },
+      },
+      {
+        $lookup: {
+          from: "clients",
+          localField: "inventory.clientId",
+          foreignField: "userId",
+          as: "clientDetails",
+        },
+      },
+      { $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true } },
+      {
+        $set: {
+          clientDetails: {
+            $cond: {
+              if: { $eq: ["$clientDetails", {}] },
+              then: { clientName: "Unknown Client", clientId: null, email: null },
+              else: "$clientDetails",
+            },
+          },
+          orderType: "buy",
+        },
+      },
+      { $addFields: { itemsCount: { $size: "$orderItems" } } },
+      {
+        $project: {
+          _id: 1,
+          invoiceNumber: "$invoiceNumber",
+          total: 1,
+          outstandingTotal: 1,
+          createdAt: 1,
+          itemsCount: 1,
+          clientDetails: 1,
+          orderType: 1,
+        },
+      },
+      // Union with Sell Orders
+      {
+        $unionWith: {
+          coll: "sellorders",
+          pipeline: [
+            {
+              $lookup: {
+                from: "sellorderitems",
+                localField: "_id",
+                foreignField: "orderId",
+                as: "orderItems",
+              },
+            },
+            {
+              $lookup: {
+                from: "inventories",
+                localField: "orderItems.inventoryId",
+                foreignField: "_id",
+                as: "inventory",
+              },
+            },
+            {
+              $lookup: {
+                from: "clients",
+                localField: "inventory.clientId",
+                foreignField: "userId",
+                as: "clientDetails",
+              },
+            },
+            { $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true } },
+            {
+              $set: {
+                clientDetails: {
+                  $cond: {
+                    if: { $eq: ["$clientDetails", {}] },
+                    then: { clientName: "Unknown Client", clientId: null, email: null },
+                    else: "$clientDetails",
+                  },
+                },
+                orderType: "sell",
+              },
+            },
+            { $addFields: { itemsCount: { $size: "$orderItems" } } },
+            {
+              $project: {
+                _id: 1,
+                // Normalize invoice number between two collections
+                invoiceNumber: { $ifNull: ["$invoiceNumber", { $toString: "$orderNumber" }] },
+                total: 1,
+                outstandingTotal: 1,
+                createdAt: 1,
+                itemsCount: 1,
+                clientDetails: 1,
+                orderType: 1,
+              },
+            },
+          ],
+        },
+      },
+      // Apply search to combined stream
+      {
+        $match: {
+          $or: [
+            { invoiceNumber: { $regex: query, $options: "i" } },
+            { "clientDetails.clientName": { $regex: query, $options: "i" } },
+          ],
+        },
+      },
+      // Group combined orders by client and compute aggregates
+      {
+        $group: {
+          _id: "$clientDetails.clientId",
+          clientDetails: { $first: "$clientDetails" },
+          orders: {
+            $push: {
+              _id: "$_id",
+              type: "$orderType",
+              invoiceNumber: "$invoiceNumber",
+              total: "$total",
+              outstandingTotal: "$outstandingTotal",
+              createdAt: "$createdAt",
+              numberOfItems: "$itemsCount",
+            },
+          },
+          totalOrders: { $sum: 1 },
+          totalAmount: { $sum: "$total" },
+          totalOutstanding: { $sum: "$outstandingTotal" },
+          totalItems: { $sum: "$itemsCount" },
+        },
+      },
+      { $sort: { "clientDetails.clientName": 1 } },
+      {
+        $project: {
+          _id: 0,
+          clientId: "$_id",
+          clientDetails: {
+            clientName: "$clientDetails.clientName",
+            clientId: { $ifNull: ["$clientDetails.clientId", null] },
+            email: { $ifNull: ["$clientDetails.email", null] },
+          },
+          orders: 1,
+          totalOrders: 1,
+          totalAmount: 1,
+          totalOutstanding: 1,
+          totalItems: 1,
+          orderDate: { $max: "$orders.createdAt" },
+        },
+      },
+    ]);
+
+    const clients = await (Order as any).aggregatePaginate(combinedAggregate, {
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
+      customLabels: {
+        docs: "clients",
+        totalDocs: "totalClients",
+      },
+    });
+
+    responseHandler(
+      res,
+      200,
+      "Clients fetched successfully",
+      "success",
+      clients
+    );
+  } catch (error: any) {
+    responseHandler(
+      res,
+      500,
+      error.message || "Failed to search orders",
+      "error"
+    );
+  }
+};
+
 const getCashieringOrderByIds = async (req: Request, res: Response) => {
   const { orderIds } = req.body;
 
@@ -1431,6 +1633,7 @@ export {
   processCashieringOrder,
   getAllCashieringSellOrders,
   searchCashieringSellOrders,
+  searchCashieringOrdersCombined,
   getCashieringSellOrderByIds,
   processCashieringSellOrder,
   getAllCashieringOrdersCombined

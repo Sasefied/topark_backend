@@ -18,6 +18,7 @@ export const createClient = async (
   try {
     const {
       clientId,
+      userId,
       clientName,
       workanniversary,
       clientEmail,
@@ -85,6 +86,7 @@ export const createClient = async (
 
     const newClient = new Client({
       clientId,
+      userId,
       clientName,
       workanniversary: workanniversary ? new Date(workanniversary) : null,
       clientEmail,
