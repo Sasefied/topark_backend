@@ -622,6 +622,7 @@ const createSellOrder = asyncHandler(
           quantity,
           sellPrice,
           productName: product.productName,
+          outstandingPrice: sellPrice * quantity,
         });
 
         inventory.qtyInStock -= quantity;
