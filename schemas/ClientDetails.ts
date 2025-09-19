@@ -1,4 +1,3 @@
-
 import mongoose, { Document, Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 export interface IClient extends Document {
@@ -22,12 +21,12 @@ export interface IClient extends Document {
   } | null; // Allow null if createdBy is optional
   relatedClientIds: mongoose.Types.ObjectId[];
   creditLimit: {
-  amount: { type: Number, default: 0 },
-  period: {
-    type: String,
-    enum: ['1', '7', '14', '30', '60', '90'],
-  },
-}
+    amount: { type: Number; default: 0 };
+    period: {
+      type: Number;
+      enum: [0, 1, 7, 14, 30, 60, 90];
+    };
+  };
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -64,8 +63,9 @@ const clientSchema = new Schema<IClient>(
     creditLimit: {
       amount: { type: Number, default: 0 },
       period: {
-        type: String,
-        enum: ['1', '7', '14', '30', '60', '90'],
+        type: Number,
+        enum: [0, 1, 7, 14, 30, 60, 90],
+        default: 0,
       },
     },
   },

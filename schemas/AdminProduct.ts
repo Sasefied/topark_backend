@@ -19,7 +19,7 @@ export interface IAdminProduct extends Document {
     | "Exotic Fruits"
     | "Exotic Vegetables"
     | "Flowers";
-    vat?: number;
+  vat?: number;
   allowOversold: boolean;
   comments?: string;
   createdAt?: Date;
@@ -108,7 +108,7 @@ const AdminProductSchema = new Schema<IAdminProduct>(
 
       required: true,
     },
-    vat: {type: Number,required: true, default: false },
+    vat: { type: Number, default: false },
     allowOversold: { type: Boolean, required: true, default: false },
     comments: { type: String, required: false },
   },
