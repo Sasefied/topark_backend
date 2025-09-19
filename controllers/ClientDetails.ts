@@ -230,8 +230,7 @@ export const addClientToUser = async (
       .filter(
         (entry) =>
           Types.ObjectId.isValid(entry.userId) &&
-          Types.ObjectId.isValid(entry.clientId) &&
-          entry.userId === userId
+          Types.ObjectId.isValid(entry.clientId)
       )
       .map((entry) => ({
         userId: new Types.ObjectId(entry.userId),
