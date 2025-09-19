@@ -1518,7 +1518,7 @@ const processCashieringOrder = async (req: Request, res: Response) => {
     if (mode === "manual") {
       orders = await Order.find({
         _id: { $in: orderIds },
-        orderStatus: "Pending",
+        // orderStatus: "Pending",
       }).session(session);
       orders = orderIds
         .map((id) => orders.find((o) => (o as any)._id.equals(id)))
@@ -1526,7 +1526,7 @@ const processCashieringOrder = async (req: Request, res: Response) => {
     } else {
       orders = await Order.find({
         _id: { $in: orderIds },
-        orderStatus: "Pending",
+        // orderStatus: "Pending",
       })
         .sort({ createdAt: 1 })
         .session(session);
