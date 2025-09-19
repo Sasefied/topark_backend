@@ -9,6 +9,7 @@ import {
   searchCashieringSellOrders,
   searchCashieringOrdersCombined,
   processCashieringSellOrder,
+  getCashieringSellOrderByIds,
 } from "../controllers/cashieringController";
 
 const router = Router();
@@ -20,6 +21,7 @@ router
   .get("/search-sell-orders/:query", searchCashieringSellOrders)
   .get("/search-combined-orders/:query", searchCashieringOrdersCombined)
   .post("/orders-by-ids", getCashieringOrderByIds)
+  .post("/sell-orders-by-ids", getCashieringSellOrderByIds)
   .post("/process-orders", processCashieringOrder)
   .post("/process-sell-orders", processCashieringSellOrder);
 
