@@ -10,6 +10,7 @@ import OrderPayment from "../schemas/OrderPayment";
 import OrderItem from "../schemas/OrderItem";
 import SellOrderItem from "../schemas/SellOrderItem";
 import SellOrderPayment from "../schemas/SellOrderPayment";
+import sendEmail from "../utils/mail";
 
 // const getAllAccountingRecords = asyncHandler(
 //   async (req: Request, res: Response) => {
@@ -314,18 +315,23 @@ const getAllAccountingRecords = asyncHandler(
       req.query;
 
     if (!startDate || !endDate) {
-      throw new BadRequestError('startDate and endDate are required');
+      throw new BadRequestError("startDate and endDate are required");
     }
     const start = new Date(startDate.toString());
     const end = new Date(endDate.toString());
-    console.log('Fetching accounting records from', start, 'to', end);
+    console.log("Fetching accounting records from", start, "to", end);
 
     let prevStart: Date | null = null;
     let prevEnd: Date | null = null;
     if (prevStartDate && prevEndDate) {
       prevStart = new Date(prevStartDate.toString());
       prevEnd = new Date(prevEndDate.toString());
-      console.log('Fetching previous accounting records from', prevStart, 'to', prevEnd);
+      console.log(
+        "Fetching previous accounting records from",
+        prevStart,
+        "to",
+        prevEnd
+      );
     }
 
     // Helper function to generate all date strings in range (inclusive)
@@ -333,18 +339,23 @@ const getAllAccountingRecords = asyncHandler(
       const dates: string[] = [];
       let current = new Date(startDate);
       while (current <= endDate) {
-        dates.push(current.toISOString().split('T')[0]); // YYYY-MM-DD
+        dates.push(current.toISOString().split("T")[0]); // YYYY-MM-DD
         current.setDate(current.getDate() + 1);
       }
       return dates;
     };
 
     const allDates = generateDateStrings(start, end);
-    const prevAllDates = prevStart && prevEnd ? generateDateStrings(prevStart, prevEnd) : [];
+    const prevAllDates =
+      prevStart && prevEnd ? generateDateStrings(prevStart, prevEnd) : [];
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toISOString().split("T")[0];
 
-    const aggregateDaily = async (Model: Model<any>, isPayment = true, usePrevDates = false): Promise<AggregateResult[]> => {
+    const aggregateDaily = async (
+      Model: Model<any>,
+      isPayment = true,
+      usePrevDates = false
+    ): Promise<AggregateResult[]> => {
       if (usePrevDates && (!prevStart || !prevEnd)) {
         return [];
       }
@@ -359,25 +370,25 @@ const getAllAccountingRecords = asyncHandler(
         },
         {
           $lookup: {
-            from: 'clients',
-            localField: 'clientId',
-            foreignField: '_id',
-            as: 'client',
+            from: "clients",
+            localField: "clientId",
+            foreignField: "_id",
+            as: "client",
           },
         },
-        { $unwind: '$client' },
+        { $unwind: "$client" },
         {
           $addFields: {
-            periodDays: { $toInt: '$client.creditLimit.period' },
+            periodDays: { $toInt: "$client.creditLimit.period" },
           },
         },
         {
           $addFields: {
             dueDate: {
               $dateAdd: {
-                startDate: '$createdAt',
-                unit: 'day',
-                amount: '$periodDays',
+                startDate: "$createdAt",
+                unit: "day",
+                amount: "$periodDays",
               },
             },
           },
@@ -392,7 +403,7 @@ const getAllAccountingRecords = asyncHandler(
           ? [
               {
                 $match: {
-                  'client.clientName': { $regex: clientName, $options: 'i' },
+                  "client.clientName": { $regex: clientName, $options: "i" },
                 },
               },
             ]
@@ -401,7 +412,7 @@ const getAllAccountingRecords = asyncHandler(
         // Preserve original _id before grouping
         {
           $addFields: {
-            originalId: '$_id',
+            originalId: "$_id",
           },
         },
 
@@ -409,30 +420,30 @@ const getAllAccountingRecords = asyncHandler(
         {
           $group: {
             _id: {
-              clientId: '$clientId',
+              clientId: "$clientId",
               date: {
-                $dateToString: { format: '%Y-%m-%d', date: '$dueDate' },
+                $dateToString: { format: "%Y-%m-%d", date: "$dueDate" },
               },
             },
-            clientName: { $first: '$client.clientName' },
-            total: { $sum: '$total' },
-            outstanding: { $sum: '$outstandingTotal' },
-            ids: { $push: '$originalId' },
+            clientName: { $first: "$client.clientName" },
+            total: { $sum: "$total" },
+            outstanding: { $sum: "$outstandingTotal" },
+            ids: { $push: "$originalId" },
           },
         },
 
         // Group by client to build dailyData array
         {
           $group: {
-            _id: '$_id.clientId',
-            clientName: { $first: '$clientName' },
+            _id: "$_id.clientId",
+            clientName: { $first: "$clientName" },
             dailyData: {
               $push: {
-                date: '$_id.date',
-                total: '$total',
-                outstanding: '$outstanding',
-                payIds: { $cond: [isPayment, '$ids', []] },
-                receiveIds: { $cond: [isPayment, [], '$ids'] },
+                date: "$_id.date",
+                total: "$total",
+                outstanding: "$outstanding",
+                payIds: { $cond: [isPayment, "$ids", []] },
+                receiveIds: { $cond: [isPayment, [], "$ids"] },
               },
             },
           },
@@ -441,7 +452,7 @@ const getAllAccountingRecords = asyncHandler(
         // Final projection
         {
           $project: {
-            clientId: '$_id',
+            clientId: "$_id",
             clientName: 1,
             dailyData: 1,
           },
@@ -461,11 +472,11 @@ const getAllAccountingRecords = asyncHandler(
       prevReceivables = await aggregateDaily(SellOrder, false, true);
     }
 
-    console.log('Payments:', payments);
-    console.log('Receivables:', receivables);
+    console.log("Payments:", payments);
+    console.log("Receivables:", receivables);
     if (prevStart && prevEnd) {
-      console.log('Prev Payments:', prevPayments);
-      console.log('Prev Receivables:', prevReceivables);
+      console.log("Prev Payments:", prevPayments);
+      console.log("Prev Receivables:", prevReceivables);
     }
 
     // Get all unique client IDs from current period
@@ -476,27 +487,55 @@ const getAllAccountingRecords = asyncHandler(
 
     const accountingRecords = Array.from(clientIds).map((clientId) => {
       // Current period
-      const payment = payments.find((p) => p.clientId.toString() === clientId) || {
+      const payment = payments.find(
+        (p) => p.clientId.toString() === clientId
+      ) || {
         dailyData: [],
-        clientName: '',
+        clientName: "",
       };
-      const receivable = receivables.find((r) => r.clientId.toString() === clientId) || {
+      const receivable = receivables.find(
+        (r) => r.clientId.toString() === clientId
+      ) || {
         dailyData: [],
-        clientName: '',
+        clientName: "",
       };
 
       // Create maps for quick lookup (current)
-      const payMap = new Map<string, AggregateResult['dailyData'][0]>(
-        payment.dailyData.map((item) => [item.date, { ...item, payIds: item.payIds || [], receiveIds: item.receiveIds || [] }])
+      const payMap = new Map<string, AggregateResult["dailyData"][0]>(
+        payment.dailyData.map((item) => [
+          item.date,
+          {
+            ...item,
+            payIds: item.payIds || [],
+            receiveIds: item.receiveIds || [],
+          },
+        ])
       );
-      const receiveMap = new Map<string, AggregateResult['dailyData'][0]>(
-        receivable.dailyData.map((item) => [item.date, { ...item, payIds: item.payIds || [], receiveIds: item.receiveIds || [] }])
+      const receiveMap = new Map<string, AggregateResult["dailyData"][0]>(
+        receivable.dailyData.map((item) => [
+          item.date,
+          {
+            ...item,
+            payIds: item.payIds || [],
+            receiveIds: item.receiveIds || [],
+          },
+        ])
       );
 
       // Build merged daily data for all dates in range (current)
       const dailyData: DailyData[] = allDates.map((dateStr) => {
-        const payItem = payMap.get(dateStr) || { total: 0, outstanding: 0, payIds: [], receiveIds: [] };
-        const receiveItem = receiveMap.get(dateStr) || { total: 0, outstanding: 0, payIds: [], receiveIds: [] };
+        const payItem = payMap.get(dateStr) || {
+          total: 0,
+          outstanding: 0,
+          payIds: [],
+          receiveIds: [],
+        };
+        const receiveItem = receiveMap.get(dateStr) || {
+          total: 0,
+          outstanding: 0,
+          payIds: [],
+          receiveIds: [],
+        };
         const payTotal = payItem.total;
         const receiveTotal = receiveItem.total;
         const net = receiveTotal - payTotal;
@@ -519,10 +558,14 @@ const getAllAccountingRecords = asyncHandler(
       const currentNetTotal = dailyData.reduce((sum, day) => sum + day.net, 0);
 
       // Previous period
-      const prevPayment = prevPayments.find((p) => p.clientId.toString() === clientId) || {
+      const prevPayment = prevPayments.find(
+        (p) => p.clientId.toString() === clientId
+      ) || {
         dailyData: [],
       };
-      const prevReceivable = prevReceivables.find((r) => r.clientId.toString() === clientId) || {
+      const prevReceivable = prevReceivables.find(
+        (r) => r.clientId.toString() === clientId
+      ) || {
         dailyData: [],
       };
 
@@ -531,11 +574,25 @@ const getAllAccountingRecords = asyncHandler(
 
       if (prevStart && prevEnd) {
         // Create maps for quick lookup (prev)
-        const prevPayMap = new Map<string, AggregateResult['dailyData'][0]>(
-          prevPayment.dailyData.map((item) => [item.date, { ...item, payIds: item.payIds || [], receiveIds: item.receiveIds || [] }])
+        const prevPayMap = new Map<string, AggregateResult["dailyData"][0]>(
+          prevPayment.dailyData.map((item) => [
+            item.date,
+            {
+              ...item,
+              payIds: item.payIds || [],
+              receiveIds: item.receiveIds || [],
+            },
+          ])
         );
-        const prevReceiveMap = new Map<string, AggregateResult['dailyData'][0]>(
-          prevReceivable.dailyData.map((item) => [item.date, { ...item, payIds: item.payIds || [], receiveIds: item.receiveIds || [] }])
+        const prevReceiveMap = new Map<string, AggregateResult["dailyData"][0]>(
+          prevReceivable.dailyData.map((item) => [
+            item.date,
+            {
+              ...item,
+              payIds: item.payIds || [],
+              receiveIds: item.receiveIds || [],
+            },
+          ])
         );
 
         // Sum totals for prev dates (with 0s for missing)
@@ -572,7 +629,7 @@ const getAllAccountingRecords = asyncHandler(
 
       return {
         clientId,
-        clientName: payment.clientName || receivable.clientName || '',
+        clientName: payment.clientName || receivable.clientName || "",
         dailyData,
         // Overall
         previousBalance,
@@ -590,8 +647,8 @@ const getAllAccountingRecords = asyncHandler(
     responseHandler(
       res,
       200,
-      'Accounting records fetched successfully',
-      'success',
+      "Accounting records fetched successfully",
+      "success",
       {
         records: accountingRecords,
       }
@@ -889,10 +946,38 @@ const getPaymentHistory = asyncHandler(async (req: Request, res: Response) => {
   );
 });
 
+const sendReminder = asyncHandler(async (req: Request, res: Response) => {
+  const { clientId } = req.params;
+  const { total, previousTotal } = req.body;
+
+  const client = await Client.findById(clientId);
+  if (!client) {
+    throw new BadRequestError("Client not found");
+  }
+
+  await sendEmail({
+    to: client.clientEmail,
+    subject: "Payment Reminder",
+    html: `
+    <p></p>Hi ${client.clientName},</p>
+    <p>Reminder: You have an outstanding payment of $${total - previousTotal}.</p>
+    <p>Thank you for your business!</p>
+    `,
+  });
+
+  responseHandler(
+    res,
+    200,
+    "Payment reminder sent successfully",
+    "success"
+  );
+});
+
 export {
   getAllAccountingRecords,
   getClientById,
   receivePayment,
   sendPayment,
   getPaymentHistory,
+  sendReminder
 };

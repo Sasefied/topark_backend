@@ -5,6 +5,7 @@ import {
   receivePayment,
   sendPayment,
   getPaymentHistory,
+  sendReminder,
 } from "../controllers/accountingController";
 
 const router = Router();
@@ -14,6 +15,7 @@ router
   .get("/:clientId", getClientById)
   .post("/receive-payment", receivePayment)
   .post("/send-payment", sendPayment)
-  .get("/:clientId/payment-history", getPaymentHistory);
+  .get("/:clientId/payment-history", getPaymentHistory)
+  .post("/send-reminder/:clientId", sendReminder);
 
 export default router;
