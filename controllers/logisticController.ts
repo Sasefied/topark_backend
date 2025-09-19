@@ -390,27 +390,49 @@ const receivedOkLogisticOrderItem = asyncHandler(
       if (!inventory) {
         throw new NotFoundError("Inventory not found");
       }
-
-      console.log(inventory);
-
-      await Inventory.create(
-        [
+      console.log("inventory", inventory);
+      const existedInventoryProduct = await Inventory.findOne({
+        userId: req.userId,
+        adminProductId: inventory.adminProductId,
+      });
+      console.log("existedInventoryProduct", existedInventoryProduct);
+      if (existedInventoryProduct) {
+        await Inventory.updateOne(
+          { _id: existedInventoryProduct._id },
           {
-            userId: inventory.clientId,
-            clientId: inventory.clientId,
-            adminProductId: inventory.adminProductId,
-            grade: inventory.grade,
-            pricePerUnit: orderItem.price,
-            qtyInStock: orderItem.quantity,
-            qtyIncoming: orderItem.quantity,
-            sourceCountry: inventory.sourceCountry,
-            ccy: inventory.ccy,
-            buyingPrice: orderItem.price,
-            tradingPrice: orderItem.price,
-          },
-        ],
-        { session }
-      );
+            $inc: {
+              qtyInStock: orderItem.quantity,
+              qtyIncoming: orderItem.quantity,
+            },
+            $set: {
+              pricePerUnit: orderItem.price,
+              sourceCountry: inventory.sourceCountry,
+              ccy: inventory.ccy,
+              buyingPrice: orderItem.price,
+              tradingPrice: orderItem.price,
+            },
+          }
+        ).session(session);
+      } else {
+        await Inventory.create(
+          [
+            {
+              userId: req.userId,
+              clientId: req.userId,
+              adminProductId: inventory.adminProductId,
+              grade: inventory.grade,
+              pricePerUnit: orderItem.price,
+              qtyInStock: orderItem.quantity,
+              qtyIncoming: orderItem.quantity,
+              sourceCountry: inventory.sourceCountry,
+              ccy: inventory.ccy,
+              buyingPrice: orderItem.price,
+              tradingPrice: orderItem.price,
+            },
+          ],
+          { session }
+        );
+      }
 
       await OrderItem.updateOne(
         { _id: orderItemId },

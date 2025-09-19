@@ -5,6 +5,7 @@ import {
   getAllProductNames,
   getDeliveredOrders,
   getProductById,
+  updateTradingPrice,
 } from "../controllers/inventoryController";
 import {
   addStockOnInventoryValidator,
@@ -17,9 +18,9 @@ const router = Router();
 router
   .get("/", getAllInventoriesValidator(), validate, getAllInventories)
   .post("/", addStockOnInventoryValidator(), validate, addStockOnInventory)
-  .get("/products/names",  validate, getAllProductNames)
+  .get("/products/names", validate, getAllProductNames)
   .get("/products/:productId", validate, getProductById)
-  .get('/delivered-orders', getDeliveredOrders)
-
+  .get("/delivered-orders", getDeliveredOrders)
+  .patch("/trading-price/:id", updateTradingPrice);
 
 export default router;

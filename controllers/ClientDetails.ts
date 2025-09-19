@@ -27,7 +27,7 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       deliveryAddress,
       clientNotes,
       companyReferenceNumber,
-      creditLimit, // Expect creditLimit as an object { amount: number, period: string }
+      creditLimit,
     } = req.body;
 
     console.log("Request body:", req.body);
@@ -126,7 +126,7 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
 
     const newClient = new Client({
       clientId,
-      userId:createdBy,
+      userId,
       clientName,
       workanniversary: workanniversary ? new Date(workanniversary) : null,
       clientEmail,
@@ -135,8 +135,7 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       deliveryAddress: deliveryAddress || "",
       clientNotes: clientNotes || "",
       companyReferenceNumber: companyReferenceNumber || clientId,
-      creditLimit: creditLimitData,
-      createdBy,
+      creditLimit,
     });
 
     await newClient.save();
@@ -158,9 +157,8 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
           deliveryAddress || "Not provided"
         }</p>
         <p><strong>Notes:</strong> ${clientNotes || "None"}</p>
-        <p><strong>Credit Limit Amount:</strong> ${creditLimitData.amount || 0}</p>
-        <p><strong>Credit Limit Period:</strong> ${
-          creditLimitData.period || "Not specified"
+         <p><strong>Credit Limit Period:</strong> ${
+          creditLimit.period || "Not specified"
         }</p>
         <p>If you have any questions, please contact our support team.</p>
         <hr style="margin-top: 20px; border: none; border-top: 1px solid #eee;">
@@ -276,6 +274,68 @@ export const addClientToUser = async (
   }
 };
 
+// export const getClientsForUser = async (
+//   req: Request,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     const userId = req.userId;
+
+//     console.log("getClientsForUser - userId:", userId);
+
+//     if (!userId) {
+//       responseHandler(res, 400, "Missing userId", "error");
+//       return;
+//     }
+
+//     // Verify user exists
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       console.warn("getClientsForUser - User not found:", userId);
+//       responseHandler(res, 400, "Invalid user", "error");
+//       return;
+//     }
+
+//     const myClientDoc = await MyClient.findOne({
+//       userId: userId.toString(),
+//     }).populate({
+//       path: "clientId",
+//       select:
+//         "clientId userId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
+//     });
+
+//     if (
+//       !myClientDoc ||
+//       !myClientDoc.clientId ||
+//       myClientDoc.clientId.length === 0
+//     ) {
+//       responseHandler(res, 200, "No clients found for this user", "success", {
+//         count: 0,
+//         clients: [],
+//       });
+//       return;
+//     }
+
+//     // Validate populated clients
+//     const clients = myClientDoc.clientId.filter((client: any) => {
+//       if (!client.clientName || !client.clientId) {
+//         console.warn("getClientsForUser - Invalid client data:", client);
+//         return false;
+//       }
+//       return true;
+//     }) as unknown as IClient[];
+
+//     const count = clients.length;
+
+//     responseHandler(res, 200, "Clients fetched successfully", "success", {
+//       count,
+//       clients,
+//     });
+//   } catch (error: any) {
+//     responseHandler(res, 500, "Internal server error", "error");
+//   }
+// };
+
 export const getClientsForUser = async (
   req: Request,
   res: Response
@@ -303,7 +363,7 @@ export const getClientsForUser = async (
     }).populate({
       path: "clientId",
       select:
-        "clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber creditLimit createdBy", // Add creditLimit
+        "clientId userId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes creditLimit companyReferenceNumber createdBy",
     });
 
     if (
