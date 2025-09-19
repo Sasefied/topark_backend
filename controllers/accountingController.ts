@@ -285,20 +285,73 @@ import SellOrderPayment from "../schemas/SellOrderPayment";
 //   }
 // );
 
+interface DailyData {
+  date: string;
+  payTotal: number;
+  receiveTotal: number;
+  net: number; // receiveTotal - payTotal
+  outstandingPay?: number;
+  outstandingReceive?: number;
+  payIds: mongoose.Types.ObjectId[];
+  receiveIds: mongoose.Types.ObjectId[];
+}
+
+interface AggregateResult {
+  clientId: string;
+  clientName: string;
+  dailyData: {
+    date: string;
+    total: number;
+    outstanding: number;
+    payIds: mongoose.Types.ObjectId[];
+    receiveIds: mongoose.Types.ObjectId[];
+  }[];
+}
+
 const getAllAccountingRecords = asyncHandler(
   async (req: Request, res: Response) => {
     const { startDate, endDate, clientName, prevStartDate, prevEndDate } =
       req.query;
 
     if (!startDate || !endDate) {
-      throw new BadRequestError("startDate and endDate are required");
+      throw new BadRequestError('startDate and endDate are required');
     }
     const start = new Date(startDate.toString());
     const end = new Date(endDate.toString());
-    console.log("Fetching accounting records from", start, "to", end);
+    console.log('Fetching accounting records from', start, 'to', end);
 
-    const aggregateDaily = async (Model: Model<any>, isPayment = true) => {
-      return await Model.aggregate([
+    let prevStart: Date | null = null;
+    let prevEnd: Date | null = null;
+    if (prevStartDate && prevEndDate) {
+      prevStart = new Date(prevStartDate.toString());
+      prevEnd = new Date(prevEndDate.toString());
+      console.log('Fetching previous accounting records from', prevStart, 'to', prevEnd);
+    }
+
+    // Helper function to generate all date strings in range (inclusive)
+    const generateDateStrings = (startDate: Date, endDate: Date): string[] => {
+      const dates: string[] = [];
+      let current = new Date(startDate);
+      while (current <= endDate) {
+        dates.push(current.toISOString().split('T')[0]); // YYYY-MM-DD
+        current.setDate(current.getDate() + 1);
+      }
+      return dates;
+    };
+
+    const allDates = generateDateStrings(start, end);
+    const prevAllDates = prevStart && prevEnd ? generateDateStrings(prevStart, prevEnd) : [];
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const aggregateDaily = async (Model: Model<any>, isPayment = true, usePrevDates = false): Promise<AggregateResult[]> => {
+      if (usePrevDates && (!prevStart || !prevEnd)) {
+        return [];
+      }
+      const rangeStart = usePrevDates ? prevStart! : start;
+      const rangeEnd = usePrevDates ? prevEnd! : end;
+
+      return await Model.aggregate<AggregateResult>([
         {
           $match: {
             userId: new mongoose.Types.ObjectId(req.userId),
@@ -306,70 +359,32 @@ const getAllAccountingRecords = asyncHandler(
         },
         {
           $lookup: {
-            from: "clients",
-            localField: "clientId",
-            foreignField: "_id",
-            as: "client",
+            from: 'clients',
+            localField: 'clientId',
+            foreignField: '_id',
+            as: 'client',
           },
         },
-        { $unwind: "$client" },
+        { $unwind: '$client' },
         {
           $addFields: {
-            interval: {
-              $switch: {
-                branches: [
-                  {
-                    case: { $eq: ["$client.creditLimit.period", "day"] },
-                    then: "$client.creditLimit.amount",
-                  },
-                  {
-                    case: { $eq: ["$client.creditLimit.period", "week"] },
-                    then: { $multiply: ["$client.creditLimit.amount", 7] },
-                  },
-                  {
-                    case: { $eq: ["$client.creditLimit.period", "month"] },
-                    then: "$client.creditLimit.amount",
-                  },
-                ],
-                default: 0,
-              },
-            },
-            unit: {
-              $switch: {
-                branches: [
-                  {
-                    case: {
-                      $or: [
-                        { $eq: ["$client.creditLimit.period", "day"] },
-                        { $eq: ["$client.creditLimit.period", "week"] },
-                      ],
-                    },
-                    then: "day",
-                  },
-                  {
-                    case: { $eq: ["$client.creditLimit.period", "month"] },
-                    then: "month",
-                  },
-                ],
-                default: "day",
-              },
-            },
+            periodDays: { $toInt: '$client.creditLimit.period' },
           },
         },
         {
           $addFields: {
             dueDate: {
               $dateAdd: {
-                startDate: "$createdAt",
-                unit: "$unit",
-                amount: "$interval",
+                startDate: '$createdAt',
+                unit: 'day',
+                amount: '$periodDays',
               },
             },
           },
         },
         {
           $match: {
-            dueDate: { $gte: start, $lte: end },
+            dueDate: { $gte: rangeStart, $lte: rangeEnd },
           },
         },
 
@@ -377,7 +392,7 @@ const getAllAccountingRecords = asyncHandler(
           ? [
               {
                 $match: {
-                  "client.clientName": { $regex: clientName, $options: "i" },
+                  'client.clientName': { $regex: clientName, $options: 'i' },
                 },
               },
             ]
@@ -386,7 +401,7 @@ const getAllAccountingRecords = asyncHandler(
         // Preserve original _id before grouping
         {
           $addFields: {
-            originalId: "$_id",
+            originalId: '$_id',
           },
         },
 
@@ -394,29 +409,30 @@ const getAllAccountingRecords = asyncHandler(
         {
           $group: {
             _id: {
-              clientId: "$clientId",
+              clientId: '$clientId',
               date: {
-                $dateToString: { format: "%Y-%m-%d", date: "$dueDate" },
+                $dateToString: { format: '%Y-%m-%d', date: '$dueDate' },
               },
             },
-            clientName: { $first: "$client.clientName" },
-            total: { $sum: "$total" },
-            outstanding: { $sum: "$outstandingTotal" },
-            ids: { $push: "$originalId" }, // collect original _ids
+            clientName: { $first: '$client.clientName' },
+            total: { $sum: '$total' },
+            outstanding: { $sum: '$outstandingTotal' },
+            ids: { $push: '$originalId' },
           },
         },
 
         // Group by client to build dailyData array
         {
           $group: {
-            _id: "$_id.clientId",
-            clientName: { $first: "$clientName" },
+            _id: '$_id.clientId',
+            clientName: { $first: '$clientName' },
             dailyData: {
               $push: {
-                ...(isPayment ? { payIds: "$ids" } : { receiveIds: "$ids" }),
-                date: "$_id.date",
-                total: "$total",
-                outstanding: "$outstanding",
+                date: '$_id.date',
+                total: '$total',
+                outstanding: '$outstanding',
+                payIds: { $cond: [isPayment, '$ids', []] },
+                receiveIds: { $cond: [isPayment, [], '$ids'] },
               },
             },
           },
@@ -425,7 +441,7 @@ const getAllAccountingRecords = asyncHandler(
         // Final projection
         {
           $project: {
-            clientId: "$_id",
+            clientId: '$_id',
             clientName: 1,
             dailyData: 1,
           },
@@ -433,314 +449,151 @@ const getAllAccountingRecords = asyncHandler(
       ]);
     };
 
-    // Usage:
+    // Current period
     const payments = await aggregateDaily(Order, true);
     const receivables = await aggregateDaily(SellOrder, false);
 
-    console.log("Payments:", payments);
-    console.log("Receivables:", receivables);
-
-    // For MoM: Optionally aggregate totals for previous period if provided
-    let prevTotalPay = 0,
-      prevTotalReceive = 0;
-    if (prevStartDate && prevEndDate) {
-      const prevStart = new Date(prevStartDate.toString());
-      const prevEnd = new Date(prevEndDate.toString());
-
-      const aggregatePrev = async (Model: Model<any>) => {
-        return await Model.aggregate([
-          {
-            $match: {
-              userId: new mongoose.Types.ObjectId(req.userId),
-            },
-          },
-          {
-            $lookup: {
-              from: "clients",
-              localField: "clientId",
-              foreignField: "_id",
-              as: "client",
-            },
-          },
-          { $unwind: "$client" },
-          {
-            $addFields: {
-              interval: {
-                $switch: {
-                  branches: [
-                    {
-                      case: { $eq: ["$client.creditLimit.period", "day"] },
-                      then: "$client.creditLimit.amount",
-                    },
-                    {
-                      case: { $eq: ["$client.creditLimit.period", "week"] },
-                      then: { $multiply: ["$client.creditLimit.amount", 7] },
-                    },
-                    {
-                      case: { $eq: ["$client.creditLimit.period", "month"] },
-                      then: "$client.creditLimit.amount",
-                    },
-                  ],
-                  default: 0,
-                },
-              },
-              unit: {
-                $switch: {
-                  branches: [
-                    {
-                      case: {
-                        $or: [
-                          { $eq: ["$client.creditLimit.period", "day"] },
-                          { $eq: ["$client.creditLimit.period", "week"] },
-                        ],
-                      },
-                      then: "day",
-                    },
-                    {
-                      case: { $eq: ["$client.creditLimit.period", "month"] },
-                      then: "month",
-                    },
-                  ],
-                  default: "day",
-                },
-              },
-            },
-          },
-          {
-            $addFields: {
-              dueDate: {
-                $dateAdd: {
-                  startDate: "$createdAt",
-                  unit: "$unit",
-                  amount: "$interval",
-                },
-              },
-            },
-          },
-          {
-            $match: {
-              dueDate: { $gte: prevStart, $lte: prevEnd },
-            },
-          },
-          { $group: { _id: null, total: { $sum: "$total" } } },
-        ]);
-      };
-
-      const prevPayments = await aggregatePrev(Order);
-      const prevReceivables = await aggregatePrev(SellOrder);
-      console.log(`Previous Payments:`, prevPayments);
-      console.log(`Previous Receivables:`, prevReceivables);
-      prevTotalPay = prevPayments[0]?.total || 0;
-      prevTotalReceive = prevReceivables[0]?.total || 0;
+    // Previous period (if provided)
+    let prevPayments: AggregateResult[] = [];
+    let prevReceivables: AggregateResult[] = [];
+    if (prevStart && prevEnd) {
+      prevPayments = await aggregateDaily(Order, true, true);
+      prevReceivables = await aggregateDaily(SellOrder, false, true);
     }
 
-    // Combine payments and receivables by client
+    console.log('Payments:', payments);
+    console.log('Receivables:', receivables);
+    if (prevStart && prevEnd) {
+      console.log('Prev Payments:', prevPayments);
+      console.log('Prev Receivables:', prevReceivables);
+    }
+
+    // Get all unique client IDs from current period
     const clientIds = new Set([
       ...payments.map((p) => p.clientId.toString()),
       ...receivables.map((r) => r.clientId.toString()),
     ]);
 
     const accountingRecords = Array.from(clientIds).map((clientId) => {
-      const payment = payments.find(
-        (p) => p.clientId.toString() === clientId
-      ) || { dailyData: [], clientName: "" };
-      console.log("Matching payment for clientId", clientId, ":", payment);
-      const receivable = receivables.find(
-        (r) => r.clientId.toString() === clientId
-      ) || { dailyData: [], clientName: "" };
-      console.log(
-        "Matching receivable for clientId",
-        clientId,
-        ":",
-        receivable
+      // Current period
+      const payment = payments.find((p) => p.clientId.toString() === clientId) || {
+        dailyData: [],
+        clientName: '',
+      };
+      const receivable = receivables.find((r) => r.clientId.toString() === clientId) || {
+        dailyData: [],
+        clientName: '',
+      };
+
+      // Create maps for quick lookup (current)
+      const payMap = new Map<string, AggregateResult['dailyData'][0]>(
+        payment.dailyData.map((item) => [item.date, { ...item, payIds: item.payIds || [], receiveIds: item.receiveIds || [] }])
       );
+      const receiveMap = new Map<string, AggregateResult['dailyData'][0]>(
+        receivable.dailyData.map((item) => [item.date, { ...item, payIds: item.payIds || [], receiveIds: item.receiveIds || [] }])
+      );
+
+      // Build merged daily data for all dates in range (current)
+      const dailyData: DailyData[] = allDates.map((dateStr) => {
+        const payItem = payMap.get(dateStr) || { total: 0, outstanding: 0, payIds: [], receiveIds: [] };
+        const receiveItem = receiveMap.get(dateStr) || { total: 0, outstanding: 0, payIds: [], receiveIds: [] };
+        const payTotal = payItem.total;
+        const receiveTotal = receiveItem.total;
+        const net = receiveTotal - payTotal;
+        const outstandingPay = payItem.outstanding;
+        const outstandingReceive = receiveItem.outstanding;
+
+        return {
+          date: dateStr,
+          payTotal,
+          receiveTotal,
+          net,
+          outstandingPay,
+          outstandingReceive,
+          payIds: payItem.payIds,
+          receiveIds: receiveItem.receiveIds,
+        };
+      });
+
+      // Calculate current net total (sum of daily nets)
+      const currentNetTotal = dailyData.reduce((sum, day) => sum + day.net, 0);
+
+      // Previous period
+      const prevPayment = prevPayments.find((p) => p.clientId.toString() === clientId) || {
+        dailyData: [],
+      };
+      const prevReceivable = prevReceivables.find((r) => r.clientId.toString() === clientId) || {
+        dailyData: [],
+      };
+
+      let previousTotalPays = 0;
+      let previousTotalReceives = 0;
+
+      if (prevStart && prevEnd) {
+        // Create maps for quick lookup (prev)
+        const prevPayMap = new Map<string, AggregateResult['dailyData'][0]>(
+          prevPayment.dailyData.map((item) => [item.date, { ...item, payIds: item.payIds || [], receiveIds: item.receiveIds || [] }])
+        );
+        const prevReceiveMap = new Map<string, AggregateResult['dailyData'][0]>(
+          prevReceivable.dailyData.map((item) => [item.date, { ...item, payIds: item.payIds || [], receiveIds: item.receiveIds || [] }])
+        );
+
+        // Sum totals for prev dates (with 0s for missing)
+        previousTotalPays = prevAllDates.reduce((sum, dateStr) => {
+          const existing = prevPayMap.get(dateStr);
+          return sum + (existing ? existing.total : 0);
+        }, 0);
+        previousTotalReceives = prevAllDates.reduce((sum, dateStr) => {
+          const existing = prevReceiveMap.get(dateStr);
+          return sum + (existing ? existing.total : 0);
+        }, 0);
+      }
+
+      // Previous net total (receive - pay)
+      const previousBalance = previousTotalReceives - previousTotalPays;
+
+      // Total balance = previousBalance + currentNetTotal
+      const totalBalance = previousBalance + currentNetTotal;
+
+      // Today calculations
+      const todayData = dailyData.find((d) => d.date === todayStr) || {
+        payTotal: 0,
+        receiveTotal: 0,
+        outstandingPay: 0,
+        outstandingReceive: 0,
+      };
+      const incomeToday = todayData.receiveTotal;
+      const dueToday = todayData.outstandingReceive || 0;
+      const paymentDueToday = todayData.outstandingPay || 0;
+      const totalDueToday = dueToday + paymentDueToday;
+      const paymentDefault = dailyData
+        .filter((d) => d.date < todayStr)
+        .reduce((sum, d) => sum + (d.outstandingPay || 0), 0);
+
       return {
-        // payId: payment._id,
-        // receiveId: receivable._id,
         clientId,
-        clientName: payment.clientName || receivable.clientName,
-        dailyPays: payment.dailyData,
-        dailyReceives: receivable.dailyData,
+        clientName: payment.clientName || receivable.clientName || '',
+        dailyData,
+        // Overall
+        previousBalance,
+        currentNetTotal,
+        totalBalance,
+        // Today
+        incomeToday,
+        dueToday,
+        paymentDefault,
+        paymentDueToday,
+        totalDueToday,
       };
     });
-
-    // Calculate overall totals
-    const totalPay = payments.reduce(
-      (sum, p) =>
-        sum + p.dailyData.reduce((dSum: number, d: any) => dSum + d.total, 0),
-      0
-    );
-    const totalReceive = receivables.reduce(
-      (sum, r) =>
-        sum + r.dailyData.reduce((dSum: number, d: any) => dSum + d.total, 0),
-      0
-    );
-    const totalOutstanding = payments.reduce(
-      (sum, p) =>
-        sum +
-        p.dailyData.reduce((dSum: number, d: any) => dSum + d.outstanding, 0),
-      0
-    );
-    const inflow = totalReceive - totalPay;
-    const momChange =
-      prevTotalReceive && prevTotalPay
-        ? inflow - (prevTotalReceive - prevTotalPay)
-        : 0;
-    const netChange = inflow; // Or customize, e.g., momChange + inflow
-
-    // Outflow as array [totalPay, totalOutstanding] to match image's two values
-    const outflow = [totalPay, totalOutstanding];
-
-    // For P&L graph: Aggregate overall daily totals, with separate profit/loss
-    const allDates = [
-      ...new Set([
-        ...payments.flatMap((p) => p.dailyData.map((d: any) => d.date)),
-        ...receivables.flatMap((r) => r.dailyData.map((d: any) => d.date)),
-      ]),
-    ].sort();
-    const dailyPnL = allDates.map((date) => {
-      const dayPay = payments.reduce(
-        (sum, p) =>
-          sum + (p.dailyData.find((d: any) => d.date === date)?.total || 0),
-        0
-      );
-      const dayReceive = receivables.reduce(
-        (sum, r) =>
-          sum + (r.dailyData.find((d: any) => d.date === date)?.total || 0),
-        0
-      );
-      const pnl = dayReceive - dayPay;
-      return { date, pnl, profit: pnl > 0 ? pnl : 0, loss: pnl < 0 ? pnl : 0 };
-    });
-
-    // Today metrics (for August 29, 2025)
-    const todayStart = new Date(); // Current date: 2025-08-29
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
-    const incomeTodayAgg = await SellOrder.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: todayStart, $lte: todayEnd },
-          userId: new mongoose.Types.ObjectId(req.userId),
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$total" } } },
-    ]);
-    const incomeToday = incomeTodayAgg[0]?.total || 0;
-
-    const aggregateTodayDue = async (Model: Model<any>, isOverdue = false, isCount = false, isReceive = false) => {
-      const matchDue = isOverdue 
-        ? { dueDate: { $lt: todayStart } } 
-        : { dueDate: { $gte: todayStart, $lte: todayEnd } };
-      const stages = [
-        {
-          $match: {
-            outstandingTotal: { $gt: 0 },
-            userId: new mongoose.Types.ObjectId(req.userId),
-          },
-        },
-        {
-          $lookup: {
-            from: "clients",
-            localField: "clientId",
-            foreignField: "_id",
-            as: "client",
-          },
-        },
-        { $unwind: "$client" },
-        {
-          $addFields: {
-            interval: {
-              $switch: {
-                branches: [
-                  {
-                    case: { $eq: ["$client.creditLimit.period", "day"] },
-                    then: "$client.creditLimit.amount",
-                  },
-                  {
-                    case: { $eq: ["$client.creditLimit.period", "week"] },
-                    then: { $multiply: ["$client.creditLimit.amount", 7] },
-                  },
-                  {
-                    case: { $eq: ["$client.creditLimit.period", "month"] },
-                    then: "$client.creditLimit.amount",
-                  },
-                ],
-                default: 0,
-              },
-            },
-            unit: {
-              $switch: {
-                branches: [
-                  {
-                    case: {
-                      $or: [
-                        { $eq: ["$client.creditLimit.period", "day"] },
-                        { $eq: ["$client.creditLimit.period", "week"] },
-                      ],
-                    },
-                    then: "day",
-                  },
-                  {
-                    case: { $eq: ["$client.creditLimit.period", "month"] },
-                    then: "month",
-                  },
-                ],
-                default: "day",
-              },
-            },
-          },
-        },
-        {
-          $addFields: {
-            dueDate: {
-              $dateAdd: {
-                startDate: "$createdAt",
-                unit: "$unit",
-                amount: "$interval",
-              },
-            },
-          },
-        },
-        { $match: matchDue },
-      ];
-      if (isCount) {
-        stages.push({ $count: "count" } as any);
-      } else {
-        stages.push({ $group: { _id: null, total: { $sum: "$outstandingTotal" } } } as any);
-      }
-      return await Model.aggregate(stages);
-    };
-
-    const dueTodayAgg = await aggregateTodayDue(Order, false);
-    const dueToday = dueTodayAgg[0]?.total || 0;
-
-    const paymentDefaultsAgg = await aggregateTodayDue(Order, true, true);
-    const paymentDefaults = paymentDefaultsAgg[0]?.count || 0;
-
-    const paymentsDueTodayAgg = await aggregateTodayDue(SellOrder, false, true);
-    const paymentsDueToday = paymentsDueTodayAgg[0]?.count || 0;
-
-    const totalDueToday = incomeToday + dueToday;
 
     responseHandler(
       res,
       200,
-      "Accounting records fetched successfully",
-      "success",
+      'Accounting records fetched successfully',
+      'success',
       {
         records: accountingRecords,
-        outflow,
-        momChange,
-        netChange,
-        dailyPnL,
-        incomeToday,
-        dueToday,
-        paymentDefaults,
-        paymentsDueToday,
-        totalDueToday,
       }
     );
   }

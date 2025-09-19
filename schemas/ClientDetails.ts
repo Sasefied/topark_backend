@@ -63,7 +63,7 @@ const clientSchema = new Schema<IClient>(
     creditLimit: {
       amount: { type: Number, default: 0 },
       period: {
-        type: String,
+        type: Number,
         enum: [0, 1, 7, 14, 30, 60, 90],
         default: 0,
       },
