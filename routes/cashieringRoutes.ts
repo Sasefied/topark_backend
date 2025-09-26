@@ -4,12 +4,12 @@ import {
   getAllCashieringOrdersCombined,
   getAllCashieringSellOrders,
   getCashieringOrderByIds,
-  getCashieringSellOrderByIds,
   processCashieringOrder,
-  processCashieringSellOrder,
   searchCashieringOrders,
   searchCashieringSellOrders,
   searchCashieringOrdersCombined,
+  processCashieringSellOrder,
+  getCashieringSellOrderByIds,
 } from "../controllers/cashieringController";
 
 const router = Router();
@@ -17,7 +17,6 @@ const router = Router();
 router
   .get("/all-combined-orders", getAllCashieringOrdersCombined)
   .get("/all-orders", getAllCashieringOrders)
-  .get("/all-sell-orders", getAllCashieringSellOrders)
   .get("/search-orders/:query", searchCashieringOrders)
   .get("/search-sell-orders/:query", searchCashieringSellOrders)
   .get("/search-combined-orders/:query", searchCashieringOrdersCombined)

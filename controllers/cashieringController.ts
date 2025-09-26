@@ -263,14 +263,17 @@ const getAllCashieringSellOrders = async (req: Request, res: Response) => {
       },
     ]);
 
-    const orders = await (SellOrder as any).aggregatePaginate(sellOrderAggregate, {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
-      customLabels: {
-        docs: "clients", // Changed to "clients" to reflect grouped data
-        totalDocs: "totalClients",
-      },
-    });
+    const orders = await (SellOrder as any).aggregatePaginate(
+      sellOrderAggregate,
+      {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        customLabels: {
+          docs: "clients", // Changed to "clients" to reflect grouped data
+          totalDocs: "totalClients",
+        },
+      }
+    );
 
     console.log("Clients fetched from DB:", JSON.stringify(orders, null, 2));
     responseHandler(
@@ -545,7 +548,11 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
           clientDetails: {
             $cond: {
               if: { $eq: ["$clientDetails", {}] },
-              then: { clientName: "Unknown Client", clientId: null, email: null },
+              then: {
+                clientName: "Unknown Client",
+                clientId: null,
+                email: null,
+              },
               else: "$clientDetails",
             },
           },
@@ -596,14 +603,21 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
               },
             },
             {
-              $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true },
+              $unwind: {
+                path: "$clientDetails",
+                preserveNullAndEmptyArrays: true,
+              },
             },
             {
               $set: {
                 clientDetails: {
                   $cond: {
                     if: { $eq: ["$clientDetails", {}] },
-                    then: { clientName: "Unknown Client", clientId: null, email: null },
+                    then: {
+                      clientName: "Unknown Client",
+                      clientId: null,
+                      email: null,
+                    },
                     else: "$clientDetails",
                   },
                 },
@@ -615,7 +629,9 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
               $project: {
                 _id: 1,
                 // Normalize invoice number between two collections
-                invoiceNumber: { $ifNull: ["$invoiceNumber", { $toString: "$orderNumber" }] },
+                invoiceNumber: {
+                  $ifNull: ["$invoiceNumber", { $toString: "$orderNumber" }],
+                },
                 total: 1,
                 outstandingTotal: 1,
                 createdAt: 1,
@@ -876,14 +892,17 @@ const searchCashieringSellOrders = async (req: Request, res: Response) => {
       },
     ]);
 
-    const clients = await (SellOrder as any).aggregatePaginate(sellOrderAggregate, {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
-      customLabels: {
-        docs: "clients",
-        totalDocs: "totalClients",
-      },
-    });
+    const clients = await (SellOrder as any).aggregatePaginate(
+      sellOrderAggregate,
+      {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        customLabels: {
+          docs: "clients",
+          totalDocs: "totalClients",
+        },
+      }
+    );
     responseHandler(
       res,
       200,
@@ -905,6 +924,7 @@ const searchCashieringOrdersCombined = async (req: Request, res: Response) => {
   try {
     const { query } = req.params;
     const { page = 1, limit = 10 } = req.query;
+    const userObjectId = new Types.ObjectId(req.userId);
 
     if (!query || typeof query !== "string") {
       return responseHandler(
@@ -917,6 +937,11 @@ const searchCashieringOrdersCombined = async (req: Request, res: Response) => {
 
     const combinedAggregate = Order.aggregate([
       // Base: Buy Orders
+      {
+        $match: {
+          userId: userObjectId,
+        },
+      },
       {
         $lookup: {
           from: "orderitems",
@@ -947,7 +972,11 @@ const searchCashieringOrdersCombined = async (req: Request, res: Response) => {
           clientDetails: {
             $cond: {
               if: { $eq: ["$clientDetails", {}] },
-              then: { clientName: "Unknown Client", clientId: null, email: null },
+              then: {
+                clientName: "Unknown Client",
+                clientId: null,
+                email: null,
+              },
               else: "$clientDetails",
             },
           },
@@ -973,6 +1002,11 @@ const searchCashieringOrdersCombined = async (req: Request, res: Response) => {
           coll: "sellorders",
           pipeline: [
             {
+              $match: {
+                userId: userObjectId,
+              },
+            },
+            {
               $lookup: {
                 from: "sellorderitems",
                 localField: "_id",
@@ -996,13 +1030,22 @@ const searchCashieringOrdersCombined = async (req: Request, res: Response) => {
                 as: "clientDetails",
               },
             },
-            { $unwind: { path: "$clientDetails", preserveNullAndEmptyArrays: true } },
+            {
+              $unwind: {
+                path: "$clientDetails",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
             {
               $set: {
                 clientDetails: {
                   $cond: {
                     if: { $eq: ["$clientDetails", {}] },
-                    then: { clientName: "Unknown Client", clientId: null, email: null },
+                    then: {
+                      clientName: "Unknown Client",
+                      clientId: null,
+                      email: null,
+                    },
                     else: "$clientDetails",
                   },
                 },
@@ -1014,7 +1057,9 @@ const searchCashieringOrdersCombined = async (req: Request, res: Response) => {
               $project: {
                 _id: 1,
                 // Normalize invoice number between two collections
-                invoiceNumber: { $ifNull: ["$invoiceNumber", { $toString: "$orderNumber" }] },
+                invoiceNumber: {
+                  $ifNull: ["$invoiceNumber", { $toString: "$orderNumber" }],
+                },
                 total: 1,
                 outstandingTotal: 1,
                 createdAt: 1,
@@ -1473,7 +1518,7 @@ const processCashieringOrder = async (req: Request, res: Response) => {
     if (mode === "manual") {
       orders = await Order.find({
         _id: { $in: orderIds },
-        orderStatus: "Pending",
+        // orderStatus: "Pending",
       }).session(session);
       orders = orderIds
         .map((id) => orders.find((o) => (o as any)._id.equals(id)))
@@ -1481,7 +1526,7 @@ const processCashieringOrder = async (req: Request, res: Response) => {
     } else {
       orders = await Order.find({
         _id: { $in: orderIds },
-        orderStatus: "Pending",
+        // orderStatus: "Pending",
       })
         .sort({ createdAt: 1 })
         .session(session);
@@ -1537,7 +1582,8 @@ const processCashieringOrder = async (req: Request, res: Response) => {
 
       for (const method of methodsOrder) {
         if (remainingApply <= 0) break;
-        const available = remainingByMethod[method as keyof typeof remainingByMethod];
+        const available =
+          remainingByMethod[method as keyof typeof remainingByMethod];
         if (available <= 0) continue;
         const useAmount = Math.min(available, remainingApply);
         orderPaymentRecords.push({
@@ -1546,7 +1592,8 @@ const processCashieringOrder = async (req: Request, res: Response) => {
           amount: useAmount,
           createdBy: req.userId,
         });
-        remainingByMethod[method as keyof typeof remainingByMethod] -= useAmount;
+        remainingByMethod[method as keyof typeof remainingByMethod] -=
+          useAmount;
         remainingApply -= useAmount;
         remainingPayment -= useAmount;
       }
@@ -1729,7 +1776,8 @@ const processCashieringSellOrder = async (req: Request, res: Response) => {
 
       for (const method of methodsOrder) {
         if (remainingApply <= 0) break;
-        const available = remainingByMethod[method as keyof typeof remainingByMethod];
+        const available =
+          remainingByMethod[method as keyof typeof remainingByMethod];
         if (available <= 0) continue;
         const useAmount = Math.min(available, remainingApply);
         orderPaymentRecords.push({
@@ -1738,7 +1786,8 @@ const processCashieringSellOrder = async (req: Request, res: Response) => {
           amount: useAmount,
           createdBy: req.userId,
         });
-        remainingByMethod[method as keyof typeof remainingByMethod] -= useAmount;
+        remainingByMethod[method as keyof typeof remainingByMethod] -=
+          useAmount;
         remainingApply -= useAmount;
         remainingPayment -= useAmount;
       }
@@ -1815,5 +1864,5 @@ export {
   searchCashieringOrdersCombined,
   getCashieringSellOrderByIds,
   processCashieringSellOrder,
-  getAllCashieringOrdersCombined
+  getAllCashieringOrdersCombined,
 };

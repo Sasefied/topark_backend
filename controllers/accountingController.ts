@@ -637,10 +637,10 @@ const getAllAccountingRecords = asyncHandler(
         totalBalance,
         // Today
         incomeToday,
-        dueToday,
+        dueToday: dueToday.toFixed(2),
         paymentDefault,
-        paymentDueToday,
-        totalDueToday,
+        paymentDueToday: paymentDueToday.toFixed(2),
+        totalDueToday: totalDueToday.toFixed(2),
       };
     });
 

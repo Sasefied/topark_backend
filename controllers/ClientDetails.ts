@@ -11,10 +11,10 @@ const excludeId = (doc: any) => {
   return rest;
 };
 
-export const createClient = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+
+
+
+export const createClient = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       clientId,
@@ -30,22 +30,27 @@ export const createClient = async (
       creditLimit,
     } = req.body;
 
-    if (!clientId || !clientName || !clientEmail.trim() || !registeredName) {
+    console.log("Request body:", req.body);
+
+    // Validate required fields
+    if (!clientId || !clientName || !clientEmail?.trim() || !registeredName || !userId) {
       responseHandler(
         res,
         400,
-        "Required fields: clientId, clientName, clientEmail, registeredName",
+        "Required fields: clientId, clientName, clientEmail, registeredName, userId",
         "error"
       );
       return;
     }
 
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(clientEmail.trim())) {
       responseHandler(res, 400, "Invalid client email format", "error");
       return;
     }
 
+    // Validate clientId format
     const clientIdRegex = /^[a-zA-Z0-9-]+$/;
     if (!clientIdRegex.test(clientId)) {
       responseHandler(
@@ -57,6 +62,26 @@ export const createClient = async (
       return;
     }
 
+    // Validate creditLimit if provided
+    if (creditLimit) {
+      // Ensure amount is a valid number
+      if (typeof creditLimit.amount !== 'number' || isNaN(creditLimit.amount)) {
+        responseHandler(res, 400, "Invalid creditLimit.amount. Must be a valid number.", "error");
+        return;
+      }
+      // Validate period if provided
+      if (creditLimit.period && !['1', '7', '14', '30', '60', '90'].includes(creditLimit.period)) {
+        responseHandler(
+          res,
+          400,
+          "Credit limit period must be one of: 1, 7, 14, 30, 60, 90",
+          "error"
+        );
+        return;
+      }
+    }
+
+    // Check for existing client
     const existingClient = await Client.findOne({
       $or: [{ clientId }, { clientEmail }],
     });
@@ -72,6 +97,7 @@ export const createClient = async (
       return;
     }
 
+    // Verify authenticated user
     const createdBy = req.userId;
     if (!createdBy) {
       responseHandler(res, 401, "Authentication required", "error");
@@ -83,6 +109,20 @@ export const createClient = async (
       responseHandler(res, 400, "Invalid user", "error");
       return;
     }
+
+    // Validate userId matches createdBy
+    if (userId !== createdBy) {
+      responseHandler(res, 403, "User ID does not match authenticated user", "error");
+      return;
+    }
+
+    // Construct the creditLimit object
+    const creditLimitData = creditLimit
+      ? {
+          amount: creditLimit.amount,
+          period: creditLimit.period || undefined, // Set to undefined if not provided
+        }
+      : { amount: 0 }; // Default if creditLimit is not provided
 
     const newClient = new Client({
       clientId,
@@ -100,6 +140,7 @@ export const createClient = async (
 
     await newClient.save();
 
+    // Prepare email content
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <p>Hello <strong>${clientName}</strong>,</p>
@@ -107,7 +148,7 @@ export const createClient = async (
           user.companyName || "our company"
         }</strong>.</p>
         <p><strong>Client ID:</strong> ${clientId}</p>
-        <p><strong>Company Reference Number:</strong> ${clientId}</p>
+        <p><strong>Company Reference Number:</strong> ${companyReferenceNumber || clientId}</p>
         <p><strong>Registered Name:</strong> ${registeredName}</p>
         <p><strong>Registered Address:</strong> ${
           registeredAddress || "Not provided"
@@ -147,11 +188,15 @@ export const createClient = async (
       message: error.message,
       stack: error.stack,
       body: req.body,
+      validationErrors: error.errors || null,
     });
+    if (error.name === "ValidationError") {
+      responseHandler(res, 400, `Validation error: ${error.message}`, "error");
+      return;
+    }
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-
 export const addClientToUser = async (
   req: Request,
   res: Response
@@ -160,7 +205,7 @@ export const addClientToUser = async (
     const { clientId, client: clientData } = req.body;
     const userId = req.userId;
 
-    console.log("addClientToUser - Request body:", req.body);
+    console.log("addClientToUser - Request body:", req.body, req.userId);
 
     // Basic validation
     if (!userId || !clientId || !Array.isArray(clientData)) {
@@ -403,28 +448,67 @@ export const getAllClients = async (
     const clients = await Client.find({
       _id: { $nin: excludedClientIds },
       clientEmail: { $ne: req.userEmail },
-    });
+      userId: {$ne:null}
+    }).select(
+        "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber creditLimit createdBy"
+      )
+      .populate(
+        "createdBy",
+        "firstName lastName companyName companyReferenceNumber"
+      );
 
-    // Validate clients
-    const validClients = clients.filter((client) => {
-      if (!client.clientName || !client.clientId) {
-        console.warn("getAllClients - Invalid client data:", client);
-        return false;
-      }
-      return true;
-    });
+    // Validate clients and include creditLimit
+    const validClients = clients
+      .filter((client) => {
+        if (!client.clientName || !client.clientId) {
+          console.warn("getAllClients - Invalid client data:", client);
+          return false;
+        }
+        return true;
+      })
+      .map((client) => ({
+        _id: client._id.toString(),
+        userId: client.userId.toString(),
+        clientId: client.clientId,
+        clientName: client.clientName,
+        clientEmail: client.clientEmail,
+        registeredName: client.registeredName,
+        workanniversary: client.workanniversary
+          ? client.workanniversary.toISOString()
+          : null,
+        registeredAddress: client.registeredAddress,
+        deliveryAddress: client.deliveryAddress,
+        clientNotes: client.clientNotes,
+        companyReferenceNumber: client.companyReferenceNumber,
+        creditLimit: client.creditLimit
+          ? {
+              amount: client.creditLimit.amount || 0,
+              period: client.creditLimit.period || null,
+            }
+          : { amount: 0, period: null },
+        createdBy: client.createdBy
+          ? {
+              _id: client.createdBy._id.toString(),
+              firstName: client.createdBy.firstName || "",
+              lastName: client.createdBy.lastName || "",
+              companyName: client.createdBy.companyName || "",
+              companyReferenceNumber:
+                client.createdBy.companyReferenceNumber || "",
+            }
+          : null,
+      }));
 
     const count = validClients.length;
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
       count,
-      clients: validClients,
+      validClients,
     });
   } catch (error: any) {
+    console.error("getAllClients - Error:", error);
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-
 export const getClientById = async (
   req: Request,
   res: Response
@@ -440,17 +524,51 @@ export const getClientById = async (
       responseHandler(res, 404, "Client not found or invalid data", "error");
       return;
     }
+    // Ensure creditLimit is included in the response
+    const clientData = {
+      _id: client._id.toString(),
+      userId: client.userId ? client.userId.toString() : null,
+      clientId: client.clientId,
+      clientName: client.clientName,
+      clientEmail: client.clientEmail,
+      registeredName: client.registeredName,
+      workanniversary: client.workanniversary
+        ? client.workanniversary.toISOString()
+        : null,
+      registeredAddress: client.registeredAddress,
+      deliveryAddress: client.deliveryAddress,
+      clientNotes: client.clientNotes,
+      companyReferenceNumber: client.companyReferenceNumber,
+      relatedClientIds: client.relatedClientIds.map((id) => id.toString()),
+      creditLimit: {
+        amount: client.creditLimit?.amount || 0,
+        period: client.creditLimit?.period || null,
+      },
+      createdBy: client.createdBy
+        ? {
+            _id: client.createdBy._id.toString(),
+            firstName: client.createdBy.firstName || "",
+            lastName: client.createdBy.lastName || "",
+            companyName: client.createdBy.companyName || "",
+            companyReferenceNumber:
+              client.createdBy.companyReferenceNumber || "",
+          }
+        : null,
+    };
     responseHandler(
       res,
       200,
       "Client fetched successfully",
       "success",
-      excludeId(client)
+      clientData
     );
   } catch (error: any) {
+    console.error("getClientById - Error:", error);
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
+
+
 export const updateClient = async (
   req: Request,
   res: Response
@@ -459,6 +577,7 @@ export const updateClient = async (
     const { clientId } = req.params;
     const updatedClientData: Partial<IClient> = req.body;
 
+    // Prevent updating clientId
     delete updatedClientData.clientId;
 
     // Validate workanniversary format
@@ -477,6 +596,42 @@ export const updateClient = async (
       }
     }
 
+    // Validate creditLimit if provided
+    if (updatedClientData.creditLimit) {
+      // Ensure amount is a valid number
+      if (
+        typeof updatedClientData.creditLimit.amount !== 'number' ||
+        isNaN(updatedClientData.creditLimit.amount)
+      ) {
+        responseHandler(
+          res,
+          400,
+          "Invalid creditLimit.amount. Must be a valid number.",
+          "error"
+        );
+        return;
+      }
+      // Validate period if provided
+      if (
+        updatedClientData.creditLimit.period &&
+        !['1', '7', '14', '30', '60', '90'].includes(
+          updatedClientData.creditLimit.period.toString()
+        )
+      ) {
+        responseHandler(
+          res,
+          400,
+          "Credit limit period must be one of: 1, 7, 14, 30, 60, 90",
+          "error"
+        );
+        return;
+      }
+      // Ensure period is undefined if not provided
+      updatedClientData.creditLimit.period =
+        updatedClientData.creditLimit.period || undefined;
+    }
+
+    // Find and update the client
     const client = await Client.findOneAndUpdate(
       { clientId },
       updatedClientData,
@@ -494,9 +649,10 @@ export const updateClient = async (
       return;
     }
 
-    // Construct response with createdBy fallback
+    // Construct response with createdBy and creditLimit
     const clientData = {
       _id: client._id.toString(),
+         userId: client.userId.toString() ,
       clientId: client.clientId,
       clientName: client.clientName,
       clientEmail: client.clientEmail,
@@ -509,6 +665,10 @@ export const updateClient = async (
       clientNotes: client.clientNotes,
       companyReferenceNumber: client.companyReferenceNumber,
       relatedClientIds: client.relatedClientIds.map((id) => id.toString()),
+      creditLimit: {
+        amount: client.creditLimit?.amount || 0,
+        period: client.creditLimit?.period || null,
+      },
       createdBy: client.createdBy
         ? {
             _id: client.createdBy._id.toString(),
@@ -529,12 +689,17 @@ export const updateClient = async (
       clientData
     );
   } catch (error: any) {
-    responseHandler(
-      res,
-      500,
-      error.message || "Internal server error",
-      "error"
-    );
+    console.error("updateClient - Error:", {
+      message: error.message,
+      stack: error.stack,
+      body: req.body,
+      validationErrors: error.errors || null,
+    });
+    if (error.name === "ValidationError") {
+      responseHandler(res, 400, `Validation error: ${error.message}`, "error");
+      return;
+    }
+    responseHandler(res, 500, "Internal server error", "error");
   }
 };
 export const deleteClient = async (
@@ -574,3 +739,6 @@ export const deleteClient = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
+
+
+
