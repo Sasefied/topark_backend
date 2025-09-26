@@ -430,12 +430,91 @@ export const getClientsForUser = async (
   }
 };
 
-export const getAllClients = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+// export const getAllClients = async (
+//   req: Request,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     const userId = req.userId;
+
+//     if (!userId) {
+//       responseHandler(res, 400, "Missing userId", "error");
+//       return;
+//     }
+
+//     const myClientDoc = await MyClient.findOne({ userId: userId.toString() });
+//     const excludedClientIds = myClientDoc?.clientId || [];
+
+//     const clients = await Client.find({
+//       _id: { $nin: excludedClientIds },
+//       clientEmail: { $ne: req.userEmail },
+//       userId: {$ne:null}
+//     }).select(
+//         "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber creditLimit createdBy"
+//       )
+//       .populate(
+//         "createdBy",
+//         "firstName lastName companyName companyReferenceNumber"
+//       );
+
+//     // Validate clients and include creditLimit
+//     const validClients = clients
+//       .filter((client) => {
+//         if (!client.clientName || !client.clientId) {
+//           console.warn("getAllClients - Invalid client data:", client);
+//           return false;
+//         }
+//         return true;
+//       })
+//       .map((client) => ({
+//         _id: client._id.toString(),
+//         userId: client.userId.toString(),
+//         clientId: client.clientId,
+//         clientName: client.clientName,
+//         clientEmail: client.clientEmail,
+//         registeredName: client.registeredName,
+//         workanniversary: client.workanniversary
+//           ? client.workanniversary.toISOString()
+//           : null,
+//         registeredAddress: client.registeredAddress,
+//         deliveryAddress: client.deliveryAddress,
+//         clientNotes: client.clientNotes,
+//         companyReferenceNumber: client.companyReferenceNumber,
+//         creditLimit: client.creditLimit
+//           ? {
+//               amount: client.creditLimit.amount || 0,
+//               period: client.creditLimit.period || null,
+//             }
+//           : { amount: 0, period: null },
+//         createdBy: client.createdBy
+//           ? {
+//               _id: client.createdBy._id.toString(),
+//               firstName: client.createdBy.firstName || "",
+//               lastName: client.createdBy.lastName || "",
+//               companyName: client.createdBy.companyName || "",
+//               companyReferenceNumber:
+//                 client.createdBy.companyReferenceNumber || "",
+//             }
+//           : null,
+//       }));
+
+//     const count = validClients.length;
+
+//     responseHandler(res, 200, "Clients fetched successfully", "success", {
+//       count,
+//       validClients,
+//     });
+//   } catch (error: any) {
+//     console.error("getAllClients - Error:", error);
+//     responseHandler(res, 500, "Internal server error", "error");
+//   }
+// };
+
+
+export const searchClients = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.userId;
+    const searchTerm = req.query.search as string;
 
     if (!userId) {
       responseHandler(res, 400, "Missing userId", "error");
@@ -445,11 +524,22 @@ export const getAllClients = async (
     const myClientDoc = await MyClient.findOne({ userId: userId.toString() });
     const excludedClientIds = myClientDoc?.clientId || [];
 
+    const searchRegex = new RegExp(searchTerm, "i"); // Case-insensitive search
     const clients = await Client.find({
-      _id: { $nin: excludedClientIds },
-      clientEmail: { $ne: req.userEmail },
-      userId: {$ne:null}
-    }).select(
+      $and: [
+        {
+          $or: [
+            { clientName: { $regex: searchRegex } },
+            { registeredName: { $regex: searchRegex } },
+            { companyReferenceNumber: { $regex: searchRegex } },
+          ],
+        },
+        { _id: { $nin: excludedClientIds } },
+        { clientEmail: { $ne: req.userEmail } },
+        { userId: { $ne: null } },
+      ],
+    })
+      .select(
         "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber creditLimit createdBy"
       )
       .populate(
@@ -457,11 +547,10 @@ export const getAllClients = async (
         "firstName lastName companyName companyReferenceNumber"
       );
 
-    // Validate clients and include creditLimit
     const validClients = clients
       .filter((client) => {
         if (!client.clientName || !client.clientId) {
-          console.warn("getAllClients - Invalid client data:", client);
+          console.warn("searchClients - Invalid client data:", client);
           return false;
         }
         return true;
@@ -505,10 +594,11 @@ export const getAllClients = async (
       validClients,
     });
   } catch (error: any) {
-    console.error("getAllClients - Error:", error);
+    console.error("searchClients - Error:", error);
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
+
 export const getClientById = async (
   req: Request,
   res: Response
