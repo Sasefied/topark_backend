@@ -65,7 +65,7 @@ export const createProduct = async (
     const requiredFields: (keyof ProductData)[] = [
       "productName",
       "size",
-      "consTypes",
+      // "consTypes",
       "productType",
     ];
     for (const field of requiredFields) {

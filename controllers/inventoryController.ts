@@ -134,32 +134,35 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       return;
     }
 
-    const existedInventoryProduct = await Inventory.findOne({
-      userId: req.userId,
-      adminProductId,
-    });
+    // const existedInventoryProduct = await Inventory.findOne({
+    //   userId: req.userId,
+    //   adminProductId,
+    // });
 
-    if (existedInventoryProduct) {
-      await Inventory.updateOne(
-        {
-          _id: existedInventoryProduct._id,
-        },
-        {
-          $inc: {
-            qtyInStock,
-            qtyIncoming,
-          },
-          $set: {
-            pricePerUnit,
-            sourceCountry,
-            ccy,
-            buyingPrice,
-            tradingPrice,
-          },
-        }
-      );
-    } else {
-      await Inventory.create({
+    // if (existedInventoryProduct) {
+    //   await Inventory.updateOne(
+    //     {
+    //       _id: existedInventoryProduct._id,
+    //     },
+    //     {
+    //       $inc: {
+    //         qtyInStock,
+    //         qtyIncoming,
+    //       },
+    //       $set: {
+    //         pricePerUnit,
+    //         sourceCountry,
+    //         ccy,
+    //         buyingPrice,
+    //         tradingPrice,
+    //       },
+    //     }
+    //   );
+    // }
+    //  else {
+      
+    // }
+    await Inventory.create({
         userId: req.userId,
         clientId: clientId || req.userId,
         adminProductId,
@@ -172,7 +175,6 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
         buyingPrice,
         tradingPrice,
       });
-    }
 
     res.status(200).json({ message: "Stock added to inventory successfully" });
   } catch (error: any) {

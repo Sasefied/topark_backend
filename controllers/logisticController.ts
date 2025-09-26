@@ -391,30 +391,33 @@ const receivedOkLogisticOrderItem = asyncHandler(
         throw new NotFoundError("Inventory not found");
       }
       console.log("inventory", inventory);
-      const existedInventoryProduct = await Inventory.findOne({
-        userId: req.userId,
-        adminProductId: inventory.adminProductId,
-      });
-      console.log("existedInventoryProduct", existedInventoryProduct);
-      if (existedInventoryProduct) {
-        await Inventory.updateOne(
-          { _id: existedInventoryProduct._id },
-          {
-            $inc: {
-              qtyInStock: orderItem.quantity,
-              qtyIncoming: orderItem.quantity,
-            },
-            $set: {
-              pricePerUnit: orderItem.price,
-              sourceCountry: inventory.sourceCountry,
-              ccy: inventory.ccy,
-              buyingPrice: orderItem.price,
-              tradingPrice: orderItem.price,
-            },
-          }
-        ).session(session);
-      } else {
-        await Inventory.create(
+      // const existedInventoryProduct = await Inventory.findOne({
+      //   userId: req.userId,
+      //   adminProductId: inventory.adminProductId,
+      // });
+      // console.log("existedInventoryProduct", existedInventoryProduct);
+      // if (existedInventoryProduct) {
+      //   await Inventory.updateOne(
+      //     { _id: existedInventoryProduct._id },
+      //     {
+      //       $inc: {
+      //         qtyInStock: orderItem.quantity,
+      //         qtyIncoming: orderItem.quantity,
+      //       },
+      //       $set: {
+      //         pricePerUnit: orderItem.price,
+      //         sourceCountry: inventory.sourceCountry,
+      //         ccy: inventory.ccy,
+      //         buyingPrice: orderItem.price,
+      //         tradingPrice: orderItem.price,
+      //       },
+      //     }
+      //   ).session(session);
+      // } else {
+       
+      // }
+
+       await Inventory.create(
           [
             {
               userId: req.userId,
@@ -432,7 +435,6 @@ const receivedOkLogisticOrderItem = asyncHandler(
           ],
           { session }
         );
-      }
 
       await OrderItem.updateOne(
         { _id: orderItemId },
