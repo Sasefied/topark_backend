@@ -12,7 +12,7 @@ export interface IAdminProduct extends Document {
   referenceNumber?: string;
   size: string;
   color?: string | null;
-  consTypes: "Bought" | "Commission" | "Expected";
+  // consTypes: "Bought" | "Commission" | "Expected";
   productType:
     | "Fruits"
     | "Vegetables"
@@ -20,7 +20,7 @@ export interface IAdminProduct extends Document {
     | "Exotic Vegetables"
     | "Flowers";
   vat?: number;
-  allowOversold: boolean;
+  // allowOversold: boolean;
   comments?: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -91,11 +91,11 @@ const AdminProductSchema = new Schema<IAdminProduct>(
     referenceNumber: { type: String, required: false },
     size: { type: String, required: true },
     color: { type: String, required: false, default: null },
-    consTypes: {
-      type: String,
-      enum: ["Bought", "Commission", "Expected"],
-      required: true,
-    },
+    // consTypes: {
+    //   type: String,
+    //   enum: ["Bought", "Commission", "Expected"],
+    //   required: true,
+    // },
     productType: {
       type: String,
       enum: [
@@ -109,7 +109,7 @@ const AdminProductSchema = new Schema<IAdminProduct>(
       required: true,
     },
     vat: { type: Number, default: false },
-    allowOversold: { type: Boolean, required: true, default: false },
+    // allowOversold: { type: Boolean, required: true, default: false },
     comments: { type: String, required: false },
   },
   { timestamps: true, versionKey: false }

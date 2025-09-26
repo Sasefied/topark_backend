@@ -509,6 +509,96 @@ export const getAllClients = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
+
+
+export const searchClients = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const searchTerm = req.query.search as string;
+
+    if (!userId) {
+      responseHandler(res, 400, "Missing userId", "error");
+      return;
+    }
+
+    const myClientDoc = await MyClient.findOne({ userId: userId.toString() });
+    const excludedClientIds = myClientDoc?.clientId || [];
+
+    const searchRegex = new RegExp(searchTerm, "i"); // Case-insensitive search
+    const clients = await Client.find({
+      $and: [
+        {
+          $or: [
+            { clientName: { $regex: searchRegex } },
+            { registeredName: { $regex: searchRegex } },
+            { companyReferenceNumber: { $regex: searchRegex } },
+          ],
+        },
+        { _id: { $nin: excludedClientIds } },
+        { clientEmail: { $ne: req.userEmail } },
+        { userId: { $ne: null } },
+      ],
+    })
+      .select(
+        "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber creditLimit createdBy"
+      )
+      .populate(
+        "createdBy",
+        "firstName lastName companyName companyReferenceNumber"
+      );
+
+    const validClients = clients
+      .filter((client) => {
+        if (!client.clientName || !client.clientId) {
+          console.warn("searchClients - Invalid client data:", client);
+          return false;
+        }
+        return true;
+      })
+      .map((client) => ({
+        _id: client._id.toString(),
+        userId: client.userId.toString(),
+        clientId: client.clientId,
+        clientName: client.clientName,
+        clientEmail: client.clientEmail,
+        registeredName: client.registeredName,
+        workanniversary: client.workanniversary
+          ? client.workanniversary.toISOString()
+          : null,
+        registeredAddress: client.registeredAddress,
+        deliveryAddress: client.deliveryAddress,
+        clientNotes: client.clientNotes,
+        companyReferenceNumber: client.companyReferenceNumber,
+        creditLimit: client.creditLimit
+          ? {
+              amount: client.creditLimit.amount || 0,
+              period: client.creditLimit.period || null,
+            }
+          : { amount: 0, period: null },
+        createdBy: client.createdBy
+          ? {
+              _id: client.createdBy._id.toString(),
+              firstName: client.createdBy.firstName || "",
+              lastName: client.createdBy.lastName || "",
+              companyName: client.createdBy.companyName || "",
+              companyReferenceNumber:
+                client.createdBy.companyReferenceNumber || "",
+            }
+          : null,
+      }));
+
+    const count = validClients.length;
+
+    responseHandler(res, 200, "Clients fetched successfully", "success", {
+      count,
+      validClients,
+    });
+  } catch (error: any) {
+    console.error("searchClients - Error:", error);
+    responseHandler(res, 500, "Internal server error", "error");
+  }
+};
+
 export const getClientById = async (
   req: Request,
   res: Response
