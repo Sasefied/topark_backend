@@ -10,6 +10,9 @@ import {
   searchCashieringOrdersCombined,
   processCashieringSellOrder,
   getCashieringSellOrderByIds,
+  verifyUserPassword,
+  setOpeningAmount,
+  setClosingAmount,
 } from "../controllers/cashieringController";
 
 const router = Router();
@@ -23,6 +26,9 @@ router
   .post("/orders-by-ids", getCashieringOrderByIds)
   .post("/sell-orders-by-ids", getCashieringSellOrderByIds)
   .post("/process-orders", processCashieringOrder)
-  .post("/process-sell-orders", processCashieringSellOrder);
+  .post("/process-sell-orders", processCashieringSellOrder)
+  .post("/verify-password", verifyUserPassword)
+  .post("/set-opening-amount", setOpeningAmount)
+  .post("/set-closing-amount", setClosingAmount);
 
 export default router;

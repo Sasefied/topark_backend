@@ -6,12 +6,16 @@ import {
   BadRequestError,
   InternalServerError,
   NotFoundError,
+  UnauthorizedError,
 } from "../utils/errors";
 import OrderPayment from "../schemas/OrderPayment";
 import { Types } from "mongoose";
 import SellOrder, { ISellOrder } from "../schemas/SellOrder";
 import SellOrderItem from "../schemas/SellOrderItem";
 import SellOrderPayment from "../schemas/SellOrderPayment";
+import asyncHandler from "express-async-handler";
+import bcrypt from "bcryptjs";
+import Cashiering from "../schemas/Cashiering";
 
 const getAllCashieringOrders = async (req: Request, res: Response) => {
   try {
@@ -1854,6 +1858,68 @@ const processCashieringSellOrder = async (req: Request, res: Response) => {
   }
 };
 
+const verifyUserPassword = asyncHandler(async (req, res) => {
+  const { password } = req.body;
+
+  if (!password || typeof password !== "string") {
+    throw new BadRequestError("Password is required");
+  }
+
+  const isMatch = await bcrypt.compare(password, password);
+  if (!isMatch) {
+    throw new UnauthorizedError("Invalid password");
+  }
+
+  responseHandler(res, 200, "Password verified successfully");
+});
+
+// Helper function to get today's date normalized to start of day
+function getToday(): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+const setOpeningAmount = asyncHandler(async (req, res) => {
+  const userId = req.userId
+  const { openingAmount } = req.body;
+
+  if (openingAmount === undefined) {
+    throw new BadRequestError("Opening Amount are required");
+  }
+
+   const today = getToday();
+   let doc = await Cashiering.findOne({ userId, dayDate: today });
+
+   if (!doc) {
+     doc = new Cashiering({ userId, dayDate: today });
+   }
+
+   doc.openingAmount = openingAmount;
+   doc.openingDate = new Date();
+   await doc.save();
+})
+
+const setClosingAmount = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  const { closingAmount } = req.body;
+
+  if (closingAmount === undefined) {
+    throw new BadRequestError("Opening Amount are required");
+  }
+
+  const today = getToday();
+  let doc = await Cashiering.findOne({ userId, dayDate: today });
+
+  if (!doc) {
+    doc = new Cashiering({ userId, dayDate: today });
+  }
+
+  doc.closingAmount = closingAmount;
+  doc.closingDate = new Date();
+  await doc.save();
+})
+
 export {
   getAllCashieringOrders,
   searchCashieringOrders,
@@ -1865,4 +1931,7 @@ export {
   getCashieringSellOrderByIds,
   processCashieringSellOrder,
   getAllCashieringOrdersCombined,
+  verifyUserPassword,
+  setOpeningAmount,
+  setClosingAmount
 };
