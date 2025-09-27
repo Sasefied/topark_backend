@@ -106,6 +106,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
             productCode: { $ifNull: ["$adminProduct.productCode", "N/A"] },
             size: { $ifNull: ["$adminProduct.size", "N/A"] },
             color: { $ifNull: ["$adminProduct.color", "N/A"] },
+            variety: {$ifNull: ["$adminProduct.variety", "N/A"]}
           },
           client: {
             _id: 1,

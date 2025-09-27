@@ -16,6 +16,7 @@ import SellOrderPayment from "../schemas/SellOrderPayment";
 import asyncHandler from "express-async-handler";
 import bcrypt from "bcryptjs";
 import Cashiering from "../schemas/Cashiering";
+import User from "../schemas/User";
 
 const getAllCashieringOrders = async (req: Request, res: Response) => {
   try {
@@ -1858,14 +1859,42 @@ const processCashieringSellOrder = async (req: Request, res: Response) => {
   }
 };
 
+// const verifyUserPassword = asyncHandler(async (req, res) => {
+//   const { password } = req.body;
+
+//   if (!password || typeof password !== "string") {
+//     throw new BadRequestError("Password is required");
+//   }
+
+//   const isMatch = await bcrypt.compare(password, password);
+//   if (!isMatch) {
+//     throw new UnauthorizedError("Invalid password");
+//   }
+
+//   responseHandler(res, 200, "Password verified successfully");
+// });
+
 const verifyUserPassword = asyncHandler(async (req, res) => {
   const { password } = req.body;
+  const userId = req.userId; // Assumes userId is set by authentication middleware
 
   if (!password || typeof password !== "string") {
     throw new BadRequestError("Password is required");
   }
 
-  const isMatch = await bcrypt.compare(password, password);
+  if (!userId) {
+    throw new UnauthorizedError("User not authenticated");
+  }
+
+  // Fetch the user from the database
+  const userDoc = await User.findById(userId);
+  if (!userDoc) {
+    throw new UnauthorizedError("User not found");
+  }
+
+  const user = userDoc.toObject();
+  // Compare provided password with stored hashed password
+  const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
     throw new UnauthorizedError("Invalid password");
   }
