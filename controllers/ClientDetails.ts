@@ -23,6 +23,7 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       registeredName,
       registeredAddress,
       deliveryAddress,
+      countryName,
       clientNotes,
       companyReferenceNumber,
       creditLimit,
@@ -73,13 +74,40 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Validate creditLimit if provided
-    if (creditLimit) {
-      if (typeof creditLimit.amount !== "number" || isNaN(creditLimit.amount)) {
-        responseHandler(res, 400, "Invalid creditLimit.amount. Must be a valid number.", "error");
+    // Validate preference-specific fields
+    if (preference === "Client" && !deliveryAddress?.trim()) {
+      responseHandler(res, 400, "Delivery address is required for Client preference", "error");
+      return;
+    }
+
+    if (preference === "Supplier") {
+      const supplierEmailFields = [
+        invoiceEmail,
+        issueReportingEmail,
+        returnToSupplierEmail,
+        qualityIssueEmail,
+        quantityIssueEmail,
+        deliveryDelayEmail,
+      ];
+      const invalidEmails = supplierEmailFields.filter(
+        (email) => email && !emailRegex.test(email.trim())
+      );
+      if (invalidEmails.length > 0) {
+        responseHandler(res, 400, "One or more supplier email fields have invalid format", "error");
         return;
       }
-      if (creditLimit.period && !["1", "7", "14", "30", "60", "90"].includes(creditLimit.period)) {
+    }
+
+    // Validate creditLimit if provided
+    if (creditLimit) {
+      if (typeof creditLimit.amount !== "number" || isNaN(creditLimit.amount) || creditLimit.amount < 0) {
+        responseHandler(res, 400, "Invalid creditLimit.amount. Must be a valid non-negative number.", "error");
+        return;
+      }
+      if (
+        creditLimit.period &&
+        !["1", "7", "14", "30", "60", "90"].includes(creditLimit.period.toString())
+      ) {
         responseHandler(
           res,
           400,
@@ -125,34 +153,16 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Validate supplier emails if preference is Supplier
-    if (preference === "Supplier") {
-      const supplierEmailFields = [
-        invoiceEmail,
-        issueReportingEmail,
-        returnToSupplierEmail,
-        qualityIssueEmail,
-        quantityIssueEmail,
-        deliveryDelayEmail,
-      ];
-      const invalidEmails = supplierEmailFields.filter(
-        (email) => email && !emailRegex.test(email.trim())
-      );
-      if (invalidEmails.length > 0) {
-        responseHandler(res, 400, "One or more supplier email fields have invalid format", "error");
-        return;
-      }
-    }
-
     // Construct the creditLimit object
     const creditLimitData = creditLimit
       ? {
           amount: creditLimit.amount,
-          period: creditLimit.period || undefined,
+          period: creditLimit.period ? Number(creditLimit.period) : 0,
         }
       : { amount: 0, period: 0 };
 
-    const newClient = new Client({
+    // Construct the client data
+    const clientData: Partial<IClient> = {
       clientId,
       userId,
       clientName,
@@ -160,24 +170,30 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       clientEmail,
       registeredName,
       registeredAddress: registeredAddress || "",
-      deliveryAddress: deliveryAddress || "",
+      countryName: countryName || "",
       clientNotes: clientNotes || "",
       companyReferenceNumber: companyReferenceNumber || clientId,
       creditLimit: creditLimitData,
       preference,
-      supplierEmails: preference === "Supplier"
-        ? {
-            invoiceEmail: invoiceEmail || "",
-            issueReportingEmail: issueReportingEmail || "",
-            returnToSupplierEmail: returnToSupplierEmail || "",
-            qualityIssueEmail: qualityIssueEmail || "",
-            quantityIssueEmail: quantityIssueEmail || "",
-            deliveryDelayEmail: deliveryDelayEmail || "",
-          }
-          
-        : undefined,
-    });
+      // createdBy: user._id,
+    };
 
+    // Add preference-specific fields
+    if (preference === "Client") {
+      clientData.deliveryAddress = deliveryAddress || "";
+      clientData.supplierEmails = undefined; // Explicitly unset for Client
+    } else if (preference === "Supplier") {
+      clientData.deliveryAddress = undefined; // Explicitly unset for Supplier
+      clientData.supplierEmails = {
+        invoiceEmail: invoiceEmail || "",
+        returnToSupplierEmail: returnToSupplierEmail || "",
+        qualityIssueEmail: qualityIssueEmail || "",
+        quantityIssueEmail: quantityIssueEmail || "",
+        deliveryDelayEmail: deliveryDelayEmail || "",
+      };
+    }
+
+    const newClient = new Client(clientData);
     await newClient.save();
 
     // Prepare email content
@@ -191,7 +207,6 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
         <p><strong>Company Reference Number:</strong> ${companyReferenceNumber || clientId}</p>
         <p><strong>Registered Name:</strong> ${registeredName}</p>
         <p><strong>Registered Address:</strong> ${registeredAddress || "Not provided"}</p>
-        <p><strong>Delivery Address:</strong> ${deliveryAddress || "Not provided"}</p>
         <p><strong>Notes:</strong> ${clientNotes || "None"}</p>
         <p><strong>Credit Limit Amount:</strong> $${creditLimitData.amount}</p>
         <p><strong>Credit Limit Period:</strong> ${
@@ -199,7 +214,12 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
         }</p>
     `;
 
-    if (preference === "Supplier") {
+    if (preference === "Client") {
+      html += `
+        <p><strong>Delivery Address:</strong> ${deliveryAddress || "Not provided"}</p>
+        <p><strong>Invoice Email:</strong> ${invoiceEmail || "Not provided"}</p>
+      `;
+    } else if (preference === "Supplier") {
       html += `
         <p><strong>Invoice Email:</strong> ${invoiceEmail || "Not provided"}</p>
         <p><strong>Issue Reporting Email:</strong> ${issueReportingEmail || "Not provided"}</p>
@@ -881,7 +901,6 @@ export const updateClient = async (
       const supplierEmails = updatedClientData.supplierEmails;
       const emailFields = [
         supplierEmails.invoiceEmail,
-        supplierEmails.issueReportingEmail,
         supplierEmails.returnToSupplierEmail,
         supplierEmails.qualityIssueEmail,
         supplierEmails.quantityIssueEmail,

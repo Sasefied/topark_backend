@@ -108,7 +108,6 @@ export interface IClient extends Document {
   preference: "Client" | "Supplier";
   supplierEmails?: {
     invoiceEmail?: string;
-    issueReportingEmail?: string;
     returnToSupplierEmail?: string;
     qualityIssueEmail?: string;
     quantityIssueEmail?: string;
@@ -164,7 +163,6 @@ const clientSchema = new Schema<IClient>(
     },
     supplierEmails: {
       invoiceEmail: { type: String, default: "" },
-      issueReportingEmail: { type: String, default: "" },
       returnToSupplierEmail: { type: String, default: "" },
       qualityIssueEmail: { type: String, default: "" },
       quantityIssueEmail: { type: String, default: "" },
