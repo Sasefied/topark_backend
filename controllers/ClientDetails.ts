@@ -12,8 +12,6 @@ const excludeId = (doc: any) => {
 };
 
 
-
-
 export const createClient = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -28,16 +26,23 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       clientNotes,
       companyReferenceNumber,
       creditLimit,
+      preference,
+      invoiceEmail,
+      issueReportingEmail,
+      returnToSupplierEmail,
+      qualityIssueEmail,
+      quantityIssueEmail,
+      deliveryDelayEmail,
     } = req.body;
 
     console.log("Request body:", req.body);
 
     // Validate required fields
-    if (!clientId || !clientName || !clientEmail?.trim() || !registeredName || !userId) {
+    if (!clientId || !clientName || !clientEmail?.trim() || !registeredName || !userId || !preference) {
       responseHandler(
         res,
         400,
-        "Required fields: clientId, clientName, clientEmail, registeredName, userId",
+        "Required fields: clientId, clientName, clientEmail, registeredName, userId, preference",
         "error"
       );
       return;
@@ -62,15 +67,19 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    // Validate preference
+    if (!["Client", "Supplier"].includes(preference)) {
+      responseHandler(res, 400, "Preference must be either 'Client' or 'Supplier'", "error");
+      return;
+    }
+
     // Validate creditLimit if provided
     if (creditLimit) {
-      // Ensure amount is a valid number
-      if (typeof creditLimit.amount !== 'number' || isNaN(creditLimit.amount)) {
+      if (typeof creditLimit.amount !== "number" || isNaN(creditLimit.amount)) {
         responseHandler(res, 400, "Invalid creditLimit.amount. Must be a valid number.", "error");
         return;
       }
-      // Validate period if provided
-      if (creditLimit.period && !['1', '7', '14', '30', '60', '90'].includes(creditLimit.period)) {
+      if (creditLimit.period && !["1", "7", "14", "30", "60", "90"].includes(creditLimit.period)) {
         responseHandler(
           res,
           400,
@@ -116,13 +125,32 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    // Validate supplier emails if preference is Supplier
+    if (preference === "Supplier") {
+      const supplierEmailFields = [
+        invoiceEmail,
+        issueReportingEmail,
+        returnToSupplierEmail,
+        qualityIssueEmail,
+        quantityIssueEmail,
+        deliveryDelayEmail,
+      ];
+      const invalidEmails = supplierEmailFields.filter(
+        (email) => email && !emailRegex.test(email.trim())
+      );
+      if (invalidEmails.length > 0) {
+        responseHandler(res, 400, "One or more supplier email fields have invalid format", "error");
+        return;
+      }
+    }
+
     // Construct the creditLimit object
     const creditLimitData = creditLimit
       ? {
           amount: creditLimit.amount,
-          period: creditLimit.period || undefined, // Set to undefined if not provided
+          period: creditLimit.period || undefined,
         }
-      : { amount: 0 }; // Default if creditLimit is not provided
+      : { amount: 0, period: 0 };
 
     const newClient = new Client({
       clientId,
@@ -135,31 +163,54 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       deliveryAddress: deliveryAddress || "",
       clientNotes: clientNotes || "",
       companyReferenceNumber: companyReferenceNumber || clientId,
-      creditLimit,
+      creditLimit: creditLimitData,
+      preference,
+      supplierEmails: preference === "Supplier"
+        ? {
+            invoiceEmail: invoiceEmail || "",
+            issueReportingEmail: issueReportingEmail || "",
+            returnToSupplierEmail: returnToSupplierEmail || "",
+            qualityIssueEmail: qualityIssueEmail || "",
+            quantityIssueEmail: quantityIssueEmail || "",
+            deliveryDelayEmail: deliveryDelayEmail || "",
+          }
+          
+        : undefined,
     });
 
     await newClient.save();
 
     // Prepare email content
-    const html = `
+    let html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <p>Hello <strong>${clientName}</strong>,</p>
-        <p>You have been successfully added as a client for <strong>${
-          user.companyName || "our company"
-        }</strong>.</p>
+        <p>You have been successfully added as a ${
+          preference === "Client" ? "client" : "supplier"
+        } for <strong>${user.companyName || "our company"}</strong>.</p>
         <p><strong>Client ID:</strong> ${clientId}</p>
         <p><strong>Company Reference Number:</strong> ${companyReferenceNumber || clientId}</p>
         <p><strong>Registered Name:</strong> ${registeredName}</p>
-        <p><strong>Registered Address:</strong> ${
-          registeredAddress || "Not provided"
-        }</p>
-        <p><strong>Delivery Address:</strong> ${
-          deliveryAddress || "Not provided"
-        }</p>
+        <p><strong>Registered Address:</strong> ${registeredAddress || "Not provided"}</p>
+        <p><strong>Delivery Address:</strong> ${deliveryAddress || "Not provided"}</p>
         <p><strong>Notes:</strong> ${clientNotes || "None"}</p>
-         <p><strong>Credit Limit Period:</strong> ${
-          creditLimit.period || "Not specified"
+        <p><strong>Credit Limit Amount:</strong> $${creditLimitData.amount}</p>
+        <p><strong>Credit Limit Period:</strong> ${
+          creditLimitData.period ? `${creditLimitData.period} days` : "Not specified"
         }</p>
+    `;
+
+    if (preference === "Supplier") {
+      html += `
+        <p><strong>Invoice Email:</strong> ${invoiceEmail || "Not provided"}</p>
+        <p><strong>Issue Reporting Email:</strong> ${issueReportingEmail || "Not provided"}</p>
+        <p><strong>Return to Supplier Email:</strong> ${returnToSupplierEmail || "Not provided"}</p>
+        <p><strong>Quality Issue Email:</strong> ${qualityIssueEmail || "Not provided"}</p>
+        <p><strong>Quantity Issue Email:</strong> ${quantityIssueEmail || "Not provided"}</p>
+        <p><strong>Delivery Delay Email:</strong> ${deliveryDelayEmail || "Not provided"}</p>
+      `;
+    }
+
+    html += `
         <p>If you have any questions, please contact our support team.</p>
         <hr style="margin-top: 20px; border: none; border-top: 1px solid #eee;">
         <p style="font-size: 12px; color: #999;">© ${new Date().getFullYear()} Toprak Team. All rights reserved.</p>
@@ -168,7 +219,7 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
 
     const mailSent = await sendEmail({
       to: clientEmail,
-      subject: "Welcome! You Have Been Added as a Client",
+      subject: `Welcome! You Have Been Added as a ${preference === "Client" ? "Client" : "Supplier"}`,
       html,
     });
 
@@ -197,6 +248,190 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
+
+// export const createClient = async (req: Request, res: Response): Promise<void> => {
+//   try {
+//     const {
+//       clientId,
+//       userId,
+//       clientName,
+//       workanniversary,
+//       clientEmail,
+//       registeredName,
+//       registeredAddress,
+//       deliveryAddress,
+//       clientNotes,
+//       companyReferenceNumber,
+//       creditLimit,
+//     } = req.body;
+
+//     console.log("Request body:", req.body);
+
+//     // Validate required fields
+//     if (!clientId || !clientName || !clientEmail?.trim() || !registeredName || !userId) {
+//       responseHandler(
+//         res,
+//         400,
+//         "Required fields: clientId, clientName, clientEmail, registeredName, userId",
+//         "error"
+//       );
+//       return;
+//     }
+
+//     // Validate email format
+//     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//     if (!emailRegex.test(clientEmail.trim())) {
+//       responseHandler(res, 400, "Invalid client email format", "error");
+//       return;
+//     }
+
+//     // Validate clientId format
+//     const clientIdRegex = /^[a-zA-Z0-9-]+$/;
+//     if (!clientIdRegex.test(clientId)) {
+//       responseHandler(
+//         res,
+//         400,
+//         "Invalid clientId format. Use alphanumeric characters and hyphens only.",
+//         "error"
+//       );
+//       return;
+//     }
+
+//     // Validate creditLimit if provided
+//     if (creditLimit) {
+//       // Ensure amount is a valid number
+//       if (typeof creditLimit.amount !== 'number' || isNaN(creditLimit.amount)) {
+//         responseHandler(res, 400, "Invalid creditLimit.amount. Must be a valid number.", "error");
+//         return;
+//       }
+//       // Validate period if provided
+//       if (creditLimit.period && !['1', '7', '14', '30', '60', '90'].includes(creditLimit.period)) {
+//         responseHandler(
+//           res,
+//           400,
+//           "Credit limit period must be one of: 1, 7, 14, 30, 60, 90",
+//           "error"
+//         );
+//         return;
+//       }
+//     }
+
+//     // Check for existing client
+//     const existingClient = await Client.findOne({
+//       $or: [{ clientId }, { clientEmail }],
+//     });
+//     if (existingClient) {
+//       responseHandler(
+//         res,
+//         400,
+//         existingClient.clientId === clientId
+//           ? "Client ID already exists"
+//           : "Client email already exists",
+//         "error"
+//       );
+//       return;
+//     }
+
+//     // Verify authenticated user
+//     const createdBy = req.userId;
+//     if (!createdBy) {
+//       responseHandler(res, 401, "Authentication required", "error");
+//       return;
+//     }
+
+//     const user = await User.findById(createdBy);
+//     if (!user) {
+//       responseHandler(res, 400, "Invalid user", "error");
+//       return;
+//     }
+
+//     // Validate userId matches createdBy
+//     if (userId !== createdBy) {
+//       responseHandler(res, 403, "User ID does not match authenticated user", "error");
+//       return;
+//     }
+
+//     // Construct the creditLimit object
+//     const creditLimitData = creditLimit
+//       ? {
+//           amount: creditLimit.amount,
+//           period: creditLimit.period || undefined, // Set to undefined if not provided
+//         }
+//       : { amount: 0 }; // Default if creditLimit is not provided
+
+//     const newClient = new Client({
+//       clientId,
+//       userId,
+//       clientName,
+//       workanniversary: workanniversary ? new Date(workanniversary) : null,
+//       clientEmail,
+//       registeredName,
+//       registeredAddress: registeredAddress || "",
+//       deliveryAddress: deliveryAddress || "",
+//       clientNotes: clientNotes || "",
+//       companyReferenceNumber: companyReferenceNumber || clientId,
+//       creditLimit,
+//     });
+
+//     await newClient.save();
+
+//     // Prepare email content
+//     const html = `
+//       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+//         <p>Hello <strong>${clientName}</strong>,</p>
+//         <p>You have been successfully added as a client for <strong>${
+//           user.companyName || "our company"
+//         }</strong>.</p>
+//         <p><strong>Client ID:</strong> ${clientId}</p>
+//         <p><strong>Company Reference Number:</strong> ${companyReferenceNumber || clientId}</p>
+//         <p><strong>Registered Name:</strong> ${registeredName}</p>
+//         <p><strong>Registered Address:</strong> ${
+//           registeredAddress || "Not provided"
+//         }</p>
+//         <p><strong>Delivery Address:</strong> ${
+//           deliveryAddress || "Not provided"
+//         }</p>
+//         <p><strong>Notes:</strong> ${clientNotes || "None"}</p>
+//          <p><strong>Credit Limit Period:</strong> ${
+//           creditLimit.period || "Not specified"
+//         }</p>
+//         <p>If you have any questions, please contact our support team.</p>
+//         <hr style="margin-top: 20px; border: none; border-top: 1px solid #eee;">
+//         <p style="font-size: 12px; color: #999;">© ${new Date().getFullYear()} Toprak Team. All rights reserved.</p>
+//       </div>
+//     `;
+
+//     const mailSent = await sendEmail({
+//       to: clientEmail,
+//       subject: "Welcome! You Have Been Added as a Client",
+//       html,
+//     });
+
+//     if (!mailSent) {
+//       console.warn("createClient - Failed to send email to:", clientEmail);
+//     }
+
+//     responseHandler(
+//       res,
+//       201,
+//       "Client created successfully",
+//       "success",
+//       newClient
+//     );
+//   } catch (error: any) {
+//     console.error("createClient - Error:", {
+//       message: error.message,
+//       stack: error.stack,
+//       body: req.body,
+//       validationErrors: error.errors || null,
+//     });
+//     if (error.name === "ValidationError") {
+//       responseHandler(res, 400, `Validation error: ${error.message}`, "error");
+//       return;
+//     }
+//     responseHandler(res, 500, "Internal server error", "error");
+//   }
+// };
 export const addClientToUser = async (
   req: Request,
   res: Response
@@ -273,67 +508,6 @@ export const addClientToUser = async (
   }
 };
 
-// export const getClientsForUser = async (
-//   req: Request,
-//   res: Response
-// ): Promise<void> => {
-//   try {
-//     const userId = req.userId;
-
-//     console.log("getClientsForUser - userId:", userId);
-
-//     if (!userId) {
-//       responseHandler(res, 400, "Missing userId", "error");
-//       return;
-//     }
-
-//     // Verify user exists
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       console.warn("getClientsForUser - User not found:", userId);
-//       responseHandler(res, 400, "Invalid user", "error");
-//       return;
-//     }
-
-//     const myClientDoc = await MyClient.findOne({
-//       userId: userId.toString(),
-//     }).populate({
-//       path: "clientId",
-//       select:
-//         "clientId userId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress clientNotes companyReferenceNumber createdBy",
-//     });
-
-//     if (
-//       !myClientDoc ||
-//       !myClientDoc.clientId ||
-//       myClientDoc.clientId.length === 0
-//     ) {
-//       responseHandler(res, 200, "No clients found for this user", "success", {
-//         count: 0,
-//         clients: [],
-//       });
-//       return;
-//     }
-
-//     // Validate populated clients
-//     const clients = myClientDoc.clientId.filter((client: any) => {
-//       if (!client.clientName || !client.clientId) {
-//         console.warn("getClientsForUser - Invalid client data:", client);
-//         return false;
-//       }
-//       return true;
-//     }) as unknown as IClient[];
-
-//     const count = clients.length;
-
-//     responseHandler(res, 200, "Clients fetched successfully", "success", {
-//       count,
-//       clients,
-//     });
-//   } catch (error: any) {
-//     responseHandler(res, 500, "Internal server error", "error");
-//   }
-// };
 
 export const getClientsForUser = async (
   req: Request,
@@ -672,53 +846,52 @@ export const updateClient = async (
 
     // Validate workanniversary format
     if (updatedClientData.workanniversary) {
-      updatedClientData.workanniversary = new Date(
-        updatedClientData.workanniversary
-      );
+      updatedClientData.workanniversary = new Date(updatedClientData.workanniversary);
       if (isNaN(updatedClientData.workanniversary.getTime())) {
-        responseHandler(
-          res,
-          400,
-          "Invalid workanniversary date format",
-          "error"
-        );
+        responseHandler(res, 400, "Invalid workanniversary date format", "error");
         return;
       }
     }
 
     // Validate creditLimit if provided
     if (updatedClientData.creditLimit) {
-      // Ensure amount is a valid number
-      if (
-        typeof updatedClientData.creditLimit.amount !== 'number' ||
-        isNaN(updatedClientData.creditLimit.amount)
-      ) {
-        responseHandler(
-          res,
-          400,
-          "Invalid creditLimit.amount. Must be a valid number.",
-          "error"
-        );
+      if (typeof updatedClientData.creditLimit.amount !== "number" || isNaN(updatedClientData.creditLimit.amount)) {
+        responseHandler(res, 400, "Invalid creditLimit.amount. Must be a valid number.", "error");
         return;
       }
-      // Validate period if provided
       if (
         updatedClientData.creditLimit.period &&
-        !['1', '7', '14', '30', '60', '90'].includes(
-          updatedClientData.creditLimit.period.toString()
-        )
+        !["1", "7", "14", "30", "60", "90"].includes(updatedClientData.creditLimit.period.toString())
       ) {
-        responseHandler(
-          res,
-          400,
-          "Credit limit period must be one of: 1, 7, 14, 30, 60, 90",
-          "error"
-        );
+        responseHandler(res, 400, "Credit limit period must be one of: 1, 7, 14, 30, 60, 90", "error");
         return;
       }
-      // Ensure period is undefined if not provided
-      updatedClientData.creditLimit.period =
-        updatedClientData.creditLimit.period || undefined;
+      updatedClientData.creditLimit.period = updatedClientData.creditLimit.period || 0;
+    }
+
+    // Validate preference if provided
+    if (updatedClientData.preference && !["Client", "Supplier"].includes(updatedClientData.preference)) {
+      responseHandler(res, 400, "Preference must be either 'Client' or 'Supplier'", "error");
+      return;
+    }
+
+    // Validate supplierEmails if preference is Supplier
+    if (updatedClientData.preference === "Supplier" && updatedClientData.supplierEmails) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const supplierEmails = updatedClientData.supplierEmails;
+      const emailFields = [
+        supplierEmails.invoiceEmail,
+        supplierEmails.issueReportingEmail,
+        supplierEmails.returnToSupplierEmail,
+        supplierEmails.qualityIssueEmail,
+        supplierEmails.quantityIssueEmail,
+        supplierEmails.deliveryDelayEmail,
+      ].filter(Boolean); // Filter out undefined or empty strings
+      const invalidEmails = emailFields.filter((email) => email && !emailRegex.test(email.trim()));
+      if (invalidEmails.length > 0) {
+        responseHandler(res, 400, "One or more supplier email fields have invalid format", "error");
+        return;
+      }
     }
 
     // Find and update the client
@@ -726,10 +899,7 @@ export const updateClient = async (
       { clientId },
       updatedClientData,
       { new: true, runValidators: true }
-    ).populate(
-      "createdBy",
-      "firstName lastName companyName companyReferenceNumber"
-    );
+    ).populate("createdBy", "firstName lastName companyName companyReferenceNumber");
 
     console.log("updateClient - Updated client:", { clientId, client });
 
@@ -739,25 +909,33 @@ export const updateClient = async (
       return;
     }
 
-    // Construct response with createdBy and creditLimit
+    // Construct response with all fields including new ones
     const clientData = {
       _id: client._id.toString(),
-         userId: client.userId.toString() ,
+      userId: client.userId?.toString() || "",
       clientId: client.clientId,
       clientName: client.clientName,
       clientEmail: client.clientEmail,
+      countryName: client.countryName || "",
       registeredName: client.registeredName,
-      workanniversary: client.workanniversary
-        ? client.workanniversary.toISOString()
-        : null,
+      workanniversary: client.workanniversary ? client.workanniversary.toISOString() : null,
       registeredAddress: client.registeredAddress,
       deliveryAddress: client.deliveryAddress,
       clientNotes: client.clientNotes,
       companyReferenceNumber: client.companyReferenceNumber,
-      relatedClientIds: client.relatedClientIds.map((id) => id.toString()),
+      relatedClientIds: client.relatedClientIds?.map((id) => id.toString()) || [],
       creditLimit: {
         amount: client.creditLimit?.amount || 0,
         period: client.creditLimit?.period || null,
+      },
+      preference: client.preference,
+      supplierEmails: client.supplierEmails || {
+        invoiceEmail: "",
+        issueReportingEmail: "",
+        returnToSupplierEmail: "",
+        qualityIssueEmail: "",
+        quantityIssueEmail: "",
+        deliveryDelayEmail: "",
       },
       createdBy: client.createdBy
         ? {
@@ -765,19 +943,12 @@ export const updateClient = async (
             firstName: client.createdBy.firstName || "",
             lastName: client.createdBy.lastName || "",
             companyName: client.createdBy.companyName || "",
-            companyReferenceNumber:
-              client.createdBy.companyReferenceNumber || "",
+            companyReferenceNumber: client.createdBy.companyReferenceNumber || "",
           }
         : null,
     };
 
-    responseHandler(
-      res,
-      200,
-      "Client updated successfully",
-      "success",
-      clientData
-    );
+    responseHandler(res, 200, "Client updated successfully", "success", clientData);
   } catch (error: any) {
     console.error("updateClient - Error:", {
       message: error.message,
