@@ -1950,7 +1950,7 @@ const getAllCashieringHistory = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10 } = req.query;
 
   const cashieringAggregate = Cashiering.aggregate([
-    { $match: { userId } },
+    { $match: { userId: new Types.ObjectId(req.userId) } },
     { $sort: { dayDate: -1 } },
   ]);
 

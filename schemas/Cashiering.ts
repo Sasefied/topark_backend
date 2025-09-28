@@ -1,4 +1,5 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Model } from "mongoose";
+import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 // Define the ICashiering interface
 export interface ICashiering extends Document {
@@ -9,6 +10,18 @@ export interface ICashiering extends Document {
   closingAmount?: number;
   closingDate?: Date;
   invoiceUrl?: string;
+}
+
+// Extend the Model interface to include aggregatePaginate
+interface CashieringModel extends Model<ICashiering> {
+  aggregatePaginate: (
+    aggregate: any,
+    options: any
+  ) => Promise<{
+    cashierings: ICashiering[];
+    totalCashierings: number;
+    [key: string]: any;
+  }>;
 }
 
 // Define the schema
@@ -44,6 +57,10 @@ const cashieringSchema: Schema<ICashiering> = new Schema(
   { timestamps: true }
 );
 
-const Cashiering = mongoose.model<ICashiering>("Cashiering", cashieringSchema);
+// Apply the plugin before creating the model
+cashieringSchema.plugin(mongooseAggregatePaginate);
+
+// Create the model
+const Cashiering: CashieringModel = mongoose.model<ICashiering, CashieringModel>("Cashiering", cashieringSchema);
 
 export default Cashiering;

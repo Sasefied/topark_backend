@@ -5,6 +5,7 @@ import SellOrderPayment from "../schemas/SellOrderPayment";
 import PDFDocument from "pdfkit";
 import fs from "node:fs/promises";
 import path from "node:path";
+import mongoose from "mongoose";
 
 // Helper function to get yesterday's date normalized to start of day
 function getYesterday(): Date {
@@ -82,32 +83,55 @@ async function generatePDFBuffer(
   });
 }
 
+// ✅ Utility: Get start and end of yesterday
+const getYesterdayRange = () => {
+  const now = new Date();
+  const startOfYesterday = new Date(now);
+  startOfYesterday.setDate(now.getDate() - 1);
+  startOfYesterday.setHours(0, 0, 0, 0);
+
+  const endOfYesterday = new Date(startOfYesterday);
+  endOfYesterday.setHours(23, 59, 59, 999);
+
+  return { startOfYesterday, endOfYesterday };
+};
+
 export const setupCronJobs = () => {
   console.log("Setting up cashiering cron jobs...");
-  // Schedule the cron job to run at midnight every day
-  cron.schedule("0 0 * * *", async () => {
-    try {
-      const yesterday = getYesterday();
-      const endOfYesterday = new Date();
-      endOfYesterday.setHours(0, 0, 0, 0);
 
-      // Find all open cashiering records for yesterday
+  // Schedule the cron job to run at midnight every day
+  cron.schedule("*/60 * * * * *", async () => {
+    try {
+      const { startOfYesterday, endOfYesterday } = getYesterdayRange();
+
+      console.log("Start of yesterday:", startOfYesterday.toISOString());
+      console.log("End of yesterday:", endOfYesterday.toISOString());
+
+      // ✅ Find all open cashiering records for yesterday
       const openCashierings = await Cashiering.find({
-        dayDate: yesterday,
+        dayDate: {
+          $gte: startOfYesterday,
+          $lte: endOfYesterday,
+        },
         openingAmount: { $exists: true },
         closingAmount: { $exists: false },
       });
-
+console.log(openCashierings)
       const invoicesDir = path.resolve(process.cwd(), "invoices");
       await fs.mkdir(invoicesDir, { recursive: true });
 
       for (const cashiering of openCashierings) {
-        const userId = cashiering.userId;
-       
+        const userId = cashiering.userId.toString();
+
+        // ✅ Aggregate Order Payments
         const paidAggregate = await OrderPayment.aggregate([
           {
             $match: {
-              createdAt: { $gte: yesterday, $lt: endOfYesterday },
+              userId: new mongoose.Types.ObjectId(userId),
+              createdAt: {
+                $gte: startOfYesterday,
+                $lte: endOfYesterday,
+              },
             },
           },
           {
@@ -118,10 +142,15 @@ export const setupCronJobs = () => {
           },
         ]);
 
+        // ✅ Aggregate Sell Order Payments
         const receivedAggregate = await SellOrderPayment.aggregate([
           {
             $match: {
-              createdAt: { $gte: yesterday, $lt: endOfYesterday },
+              userId: new mongoose.Types.ObjectId(userId),
+              createdAt: {
+                $gte: startOfYesterday,
+                $lte: endOfYesterday,
+              },
             },
           },
           {
@@ -137,25 +166,25 @@ export const setupCronJobs = () => {
         const net = totalReceived - totalPaid;
         const closingAmount = (cashiering.openingAmount || 0) + net;
 
-        // Fetch detailed transactions for PDF
+        // ✅ Fetch detailed transactions for PDF
         const paidTransactions = await OrderPayment.find({
           userId,
-          createdAt: { $gte: yesterday, $lt: endOfYesterday },
+          createdAt: { $gte: startOfYesterday, $lte: endOfYesterday },
         }).sort({ createdAt: 1 });
 
         const receivedTransactions = await SellOrderPayment.find({
           userId,
-          createdAt: { $gte: yesterday, $lt: endOfYesterday },
+          createdAt: { $gte: startOfYesterday, $lte: endOfYesterday },
         }).sort({ createdAt: 1 });
 
-        // Generate PDF buffer
+        // ✅ Generate PDF buffer
         const pdfBuffer = await generatePDFBuffer(
           cashiering,
           paidTransactions,
           receivedTransactions
         );
 
-        // Save to local server
+        // ✅ Save to local server
         const key = `cashiering_${cashiering._id}.pdf`;
         const filePath = path.join(invoicesDir, key);
         await fs.writeFile(filePath, pdfBuffer);
@@ -165,22 +194,22 @@ export const setupCronJobs = () => {
             ? `https://topark-backend.onrender.com/${key}`
             : `http://localhost:${process.env.PORT}/${key}`;
 
-        // Update the cashiering record
+        // ✅ Update the cashiering record
         cashiering.closingAmount = closingAmount;
         cashiering.closingDate = new Date();
         cashiering.invoiceUrl = invoiceUrl;
         await cashiering.save();
 
         console.log(
-          `Closed and generated invoice for cashiering record ${cashiering._id} for ${yesterday.toDateString()}`
+          `✅ Closed and generated invoice for cashiering record ${cashiering._id} for ${startOfYesterday.toDateString()}`
         );
       }
 
       console.log(
-        `Auto-closed ${openCashierings.length} cashiering records for ${yesterday.toDateString()}`
+        `✅ Auto-closed ${openCashierings.length} cashiering records for ${startOfYesterday.toDateString()}`
       );
     } catch (error) {
-      console.error("Error in auto-closing cashiering records:", error);
+      console.error("❌ Error in auto-closing cashiering records:", error);
     }
   });
 };

@@ -216,15 +216,15 @@ export const createClient = async (
     }
 
     // Validate userId matches createdBy
-    if (userId !== createdBy) {
-      responseHandler(
-        res,
-        403,
-        "User ID does not match authenticated user",
-        "error"
-      );
-      return;
-    }
+    // if (userId !== createdBy) {
+    //   responseHandler(
+    //     res,
+    //     403,
+    //     "User ID does not match authenticated user",
+    //     "error"
+    //   );
+    //   return;
+    // }
 
     // Construct the creditLimit object
     const creditLimitData = creditLimit
