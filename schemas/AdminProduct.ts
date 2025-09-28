@@ -14,16 +14,15 @@ export interface IAdminProduct extends Document {
   color?: string | null;
   // consTypes: "Bought" | "Commission" | "Expected";
   productType:
-    | "Fruits"
-    | "Vegetables"
-    | "Exotic Fruits"
-    | "Exotic Vegetables"
-    | "Flowers";
+    "Fruits" | "Vegetables" | "Exotic Fruits" | "Exotic Vegetables" | "Flowers" | "Exotic Flowers" | "Plants" | "Garden Plants";
   vat?: number;
+  shelfLife? : number;
+  sellByType: "Box" | "Kg" | "Unit" | "Dozen" | "Liter" | "Packet" | "Gram" | "Pound" | "Ounce" | "Milliliter";
   // allowOversold: boolean;
   comments?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  quantity: number;
 }
 
 export const generateProductCode = async (
@@ -99,15 +98,17 @@ const AdminProductSchema = new Schema<IAdminProduct>(
     productType: {
       type: String,
       enum: [
-        "Fruits",
-        "Vegetables",
-        "Exotic Fruits",
-        "Exotic Vegetables",
-        "Flowers",
+        "Fruits","Vegetables","Exotic Fruits","Exotic Vegetables","Flowers","Exotic Flowers","Plants", "Garden Plants"
       ],
-
+     
       required: true,
     },
+    sellByType:{
+        type: String,
+        enum: ["Box", "Kg", "Unit", "Dozen", "Liter", "Packet", "Gram", "Pound", "Ounce", "Milliliter"],
+      },
+      shelfLife: { type: Number, default: 0},
+  quantity: {type: Number, default: 0},
     vat: { type: Number, default: false },
     // allowOversold: { type: Boolean, required: true, default: false },
     comments: { type: String, required: false },
