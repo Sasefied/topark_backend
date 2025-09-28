@@ -100,82 +100,83 @@ export const setupCronJobs = () => {
   console.log("Setting up cashiering cron jobs...");
 
   // Schedule the cron job to run at midnight every day
-  cron.schedule("*/60 * * * * *", async () => {
+  cron.schedule("0 0 * * *", async () => {
     try {
-      const { startOfYesterday, endOfYesterday } = getYesterdayRange();
+      // Get yesterday's date at midnight (ensure consistent timezone)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(0, 0, 0, 0);
 
-      console.log("Start of yesterday:", startOfYesterday.toISOString());
-      console.log("End of yesterday:", endOfYesterday.toISOString());
+      // Define end of yesterday (midnight of today)
+      const endOfYesterday = new Date();
+      endOfYesterday.setHours(0, 0, 0, 0);
 
-      // ✅ Find all open cashiering records for yesterday
+      console.log(
+        `Checking for open cashierings on ${yesterday.toISOString()}`
+      );
+
+      // Find all open cashiering records for yesterday
       const openCashierings = await Cashiering.find({
         dayDate: {
-          $gte: startOfYesterday,
-          $lte: endOfYesterday,
+          $gte: yesterday,
+          $lt: endOfYesterday,
         },
-        openingAmount: { $exists: true },
-        closingAmount: { $exists: false },
       });
-console.log(openCashierings)
+
+      console.log(`Found ${openCashierings.length} open cashiering records`);
+
+      if (openCashierings.length === 0) {
+        console.log("No open cashiering records found. Query details:", {
+          dayDate: yesterday.toISOString(),
+          endOfYesterday: endOfYesterday.toISOString(),
+        });
+      }
+
       const invoicesDir = path.resolve(process.cwd(), "invoices");
       await fs.mkdir(invoicesDir, { recursive: true });
 
+      // Aggregate paid amounts
+      const paidAggregate = await OrderPayment.aggregate([
+        {
+          $match: {},
+        },
+        {
+          $group: {
+            _id: null,
+            totalAmount: { $sum: "$amount" },
+          },
+        },
+      ]);
+
+      // Aggregate received amounts
+      const receivedAggregate = await SellOrderPayment.aggregate([
+        {
+          $match: {},
+        },
+        {
+          $group: {
+            _id: null,
+            totalAmount: { $sum: "$amount" },
+          },
+        },
+      ]);
+
       for (const cashiering of openCashierings) {
-        const userId = cashiering.userId.toString();
-
-        // ✅ Aggregate Order Payments
-        const paidAggregate = await OrderPayment.aggregate([
-          {
-            $match: {
-              userId: new mongoose.Types.ObjectId(userId),
-              createdAt: {
-                $gte: startOfYesterday,
-                $lte: endOfYesterday,
-              },
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              totalAmount: { $sum: "$amount" },
-            },
-          },
-        ]);
-
-        // ✅ Aggregate Sell Order Payments
-        const receivedAggregate = await SellOrderPayment.aggregate([
-          {
-            $match: {
-              userId: new mongoose.Types.ObjectId(userId),
-              createdAt: {
-                $gte: startOfYesterday,
-                $lte: endOfYesterday,
-              },
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              totalAmount: { $sum: "$amount" },
-            },
-          },
-        ]);
+        const userId = cashiering.userId;
 
         const totalPaid = paidAggregate[0]?.totalAmount || 0;
         const totalReceived = receivedAggregate[0]?.totalAmount || 0;
         const net = totalReceived - totalPaid;
         const closingAmount = (cashiering.openingAmount || 0) + net;
 
-        // ✅ Fetch detailed transactions for PDF
-        const paidTransactions = await OrderPayment.find({
-          userId,
-          createdAt: { $gte: startOfYesterday, $lte: endOfYesterday },
-        }).sort({ createdAt: 1 });
+        // // Fetch detailed transactions for PDF
+        const paidTransactions = await OrderPayment.find({}).sort({
+          createdAt: 1,
+        });
 
-        const receivedTransactions = await SellOrderPayment.find({
-          userId,
-          createdAt: { $gte: startOfYesterday, $lte: endOfYesterday },
-        }).sort({ createdAt: 1 });
+        const receivedTransactions = await SellOrderPayment.find({}).sort({
+          createdAt: 1,
+        });
 
         // ✅ Generate PDF buffer
         const pdfBuffer = await generatePDFBuffer(
@@ -192,7 +193,7 @@ console.log(openCashierings)
         const invoiceUrl =
           process.env.NODE_ENV === "production"
             ? `https://topark-backend.onrender.com/${key}`
-            : `http://localhost:${process.env.PORT}/${key}`;
+            : `http://localhost:${process.env.PORT || 3000}/${key}`;
 
         // ✅ Update the cashiering record
         cashiering.closingAmount = closingAmount;
