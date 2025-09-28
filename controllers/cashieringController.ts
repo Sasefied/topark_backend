@@ -1867,7 +1867,7 @@ const verifyUserPassword = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findById(req.userId).select("+password");
-  if(!user){
+  if (!user) {
     throw new UnauthorizedError("User not found");
   }
   const isMatch = await bcrypt.compare(password, user.password);
@@ -1959,6 +1959,31 @@ const getAllCashieringHistory = asyncHandler(async (req, res) => {
   );
 });
 
+const getTodayCashiering = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+
+  const today = getToday();
+  let doc = await Cashiering.findOne({ userId, dayDate: today });
+
+  if (!doc) {
+    return responseHandler(
+      res,
+      200,
+      "No cashiering record for today",
+      "success",
+      null
+    );
+  }
+
+  responseHandler(
+    res,
+    200,
+    "Cashiering record fetched successfully",
+    "success",
+    doc
+  );
+});
+
 export {
   getAllCashieringOrders,
   searchCashieringOrders,
@@ -1974,4 +1999,5 @@ export {
   setOpeningAmount,
   setClosingAmount,
   getAllCashieringHistory,
+  getTodayCashiering,
 };

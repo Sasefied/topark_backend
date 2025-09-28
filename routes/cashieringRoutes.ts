@@ -14,6 +14,7 @@ import {
   setOpeningAmount,
   setClosingAmount,
   getAllCashieringHistory,
+  getTodayCashiering,
 } from "../controllers/cashieringController";
 
 const router = Router();
@@ -31,6 +32,7 @@ router
   .post("/verify-password", verifyUserPassword)
   .post("/set-opening-amount", setOpeningAmount)
   .post("/set-closing-amount", setClosingAmount)
-  .get("/all-cashiering-history", getAllCashieringHistory);
+  .get("/all-cashiering-history", getAllCashieringHistory)
+  .get("/today-cashiering", getTodayCashiering);
 
 export default router;
