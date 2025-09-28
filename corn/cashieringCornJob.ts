@@ -86,7 +86,7 @@ export const setupCronJobs = () => {
   console.log("Setting up cashiering cron jobs...");
 
   // Schedule the cron job to run at midnight every day
-  cron.schedule("*/30 * * * * *", async () => {
+  cron.schedule("0 0 * * *", async () => {
     try {
       // Get yesterday's date at midnight (ensure consistent timezone)
       const yesterday = new Date();
