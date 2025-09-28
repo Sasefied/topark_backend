@@ -15,6 +15,8 @@ import {
   setClosingAmount,
   getAllCashieringHistory,
   getTodayCashiering,
+  createCounter,
+  deleteCounter,
 } from "../controllers/cashieringController";
 
 const router = Router();
@@ -32,7 +34,10 @@ router
   .post("/verify-password", verifyUserPassword)
   .post("/set-opening-amount", setOpeningAmount)
   .post("/set-closing-amount", setClosingAmount)
+  .post("/create-counter", createCounter)
   .get("/all-cashiering-history", getAllCashieringHistory)
-  .get("/today-cashiering", getTodayCashiering);
+  .get("/today-cashiering", getTodayCashiering)
+.delete("/delete-counter/:counterId", deleteCounter);
+
 
 export default router;

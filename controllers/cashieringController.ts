@@ -1859,20 +1859,6 @@ const processCashieringSellOrder = async (req: Request, res: Response) => {
   }
 };
 
-// const verifyUserPassword = asyncHandler(async (req, res) => {
-//   const { password } = req.body;
-
-//   if (!password || typeof password !== "string") {
-//     throw new BadRequestError("Password is required");
-//   }
-
-//   const isMatch = await bcrypt.compare(password, password);
-//   if (!isMatch) {
-//     throw new UnauthorizedError("Invalid password");
-//   }
-
-//   responseHandler(res, 200, "Password verified successfully");
-// });
 
 const verifyUserPassword = asyncHandler(async (req, res) => {
   const { password } = req.body;
@@ -1901,57 +1887,69 @@ function getToday(): Date {
   return today;
 }
 
-const setOpeningAmount = asyncHandler(async (req, res) => {
-  const userId = req.userId;
-  const { openingAmount } = req.body;
 
-  if (openingAmount === undefined) {
-    throw new BadRequestError("Opening Amount are required");
+const setOpeningAmount = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const { openingAmount, counterId } = req.body; // Add counterId to request body
+
+  if (openingAmount === undefined || !counterId) {
+    throw new BadRequestError("Opening Amount and Counter ID are required");
   }
 
   const today = getToday();
-  let doc = await Cashiering.findOne({ userId, dayDate: today });
+  let doc = await Cashiering.findOne({ userId, counterId, dayDate: today });
 
   if (!doc) {
-    doc = new Cashiering({ userId, dayDate: today });
+    doc = new Cashiering({ userId, counterId, dayDate: today });
   }
 
   doc.openingAmount = openingAmount;
   doc.openingDate = new Date();
   await doc.save();
 
-  responseHandler(res, 200, "Opening amount set successfully");
+  responseHandler(res, 200, "Opening amount set successfully", "success", doc);
 });
 
-const setClosingAmount = asyncHandler(async (req, res) => {
+const setClosingAmount = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId;
-  const { closingAmount } = req.body;
+  const { closingAmount, counterId } = req.body; // Add counterId to request body
 
-  if (closingAmount === undefined) {
-    throw new BadRequestError("Opening Amount are required");
+  if (closingAmount === undefined || !counterId) {
+    throw new BadRequestError("Closing Amount and Counter ID are required");
   }
 
   const today = getToday();
-  let doc = await Cashiering.findOne({ userId, dayDate: today });
+  let doc = await Cashiering.findOne({ userId, counterId, dayDate: today });
 
   if (!doc) {
-    doc = new Cashiering({ userId, dayDate: today });
+    throw new NotFoundError("No cashiering record found for today");
   }
 
   doc.closingAmount = closingAmount;
   doc.closingDate = new Date();
   await doc.save();
 
-  responseHandler(res, 200, "Closing amount set successfully");
+  responseHandler(res, 200, "Closing amount set successfully", "success", doc);
 });
 
-const getAllCashieringHistory = asyncHandler(async (req, res) => {
+const getAllCashieringHistory = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId;
   const { page = 1, limit = 10 } = req.query;
 
   const cashieringAggregate = Cashiering.aggregate([
     { $match: { userId: new Types.ObjectId(req.userId) } },
     { $sort: { dayDate: -1 } },
+    {
+      $project: {
+        _id: 1,
+        userId: 1,
+        counterId: 1,
+        openingAmount: 1,
+        closingAmount: 1,
+        dayDate: 1,
+        isOpen: { $eq: ["$closingAmount", null] },
+      },
+    },
   ]);
 
   const cashierings = await (Cashiering as any).aggregatePaginate(
@@ -1974,31 +1972,143 @@ const getAllCashieringHistory = asyncHandler(async (req, res) => {
     cashierings
   );
 });
-
-const getTodayCashiering = asyncHandler(async (req, res) => {
+ const createCounter = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId;
+  let { counterId } = req.body;
+
+  if (!userId || !Types.ObjectId.isValid(userId)) {
+    throw new BadRequestError("Invalid or missing userId");
+  }
 
   const today = getToday();
-  let doc = await Cashiering.findOne({ userId, dayDate: today });
 
-  if (!doc) {
-    return responseHandler(
-      res,
-      200,
-      "No cashiering record for today",
-      "success",
-      null
-    );
+  // Generate counterId if not provided
+  if (!counterId || typeof counterId !== "string" || counterId.trim() === "") {
+    // Fetch existing counters to determine the next number
+    const existingCounters = await Cashiering.find({ userId, dayDate: today });
+    const existingIds = existingCounters.map((counter) => counter.counterId);
+    let counterNumber = 1;
+    counterId = "counter1";
+    while (existingIds.includes(counterId)) {
+      counterNumber++;
+      counterId = `counter${counterNumber}`;
+    }
+  }
+
+  // Check if counter already exists for user on this day
+  const existingCounter = await Cashiering.findOne({
+    userId,
+    counterId,
+    dayDate: today,
+  });
+
+  if (existingCounter) {
+    throw new BadRequestError(`Counter ${counterId} already exists for today`);
+  }
+
+  // Create new counter record
+  const newCounter = new Cashiering({
+    userId,
+    counterId,
+    dayDate: today,
+    openingAmount: null,
+    closingAmount: null,
+    isOpen: false,
+  });
+
+  await newCounter.save();
+
+  responseHandler(
+    res,
+    201,
+    "Counter created successfully",
+    "success",
+    newCounter
+  );
+});
+
+const deleteCounter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const { counterId } = req.params;
+
+  if (!userId || !Types.ObjectId.isValid(userId)) {
+    throw new BadRequestError("Invalid or missing userId");
+  }
+
+  if (!counterId || typeof counterId !== "string" || counterId.trim() === "") {
+    throw new BadRequestError("Valid counterId is required");
+  }
+
+  if (counterId === "counter1") {
+    throw new BadRequestError("Default counter (counter1) cannot be deleted");
+  }
+
+  const today = getToday();
+  
+  // Check if counter exists and is not open
+  const counter = await Cashiering.findOne({
+    userId,
+    counterId,
+    dayDate: today,
+  });
+
+  if (!counter) {
+    throw new NotFoundError(`Counter ${counterId} not found for today`);
+  }
+
+  if (counter.closingAmount === null || counter.isOpen) {
+    throw new BadRequestError("Cannot delete an open counter. Please close it first");
+  }
+
+  // Delete the counter
+  await Cashiering.deleteOne({ userId, counterId, dayDate: today });
+
+  responseHandler(
+    res,
+    200,
+    `Counter ${counterId} deleted successfully`,
+    "success"
+  );
+});
+
+const getTodayCashiering = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  if (!userId || !Types.ObjectId.isValid(userId)) {
+    throw new BadRequestError("Invalid or missing userId");
+  }
+
+  const today = getToday();
+
+  // Fetch all counters for the user for today
+  let counters = await Cashiering.find({
+    userId,
+    dayDate: today,
+  });
+
+  // If no counters exist, create a default counter1
+  if (counters.length === 0) {
+    const defaultCounter = new Cashiering({
+      userId,
+      counterId: "counter1",
+      dayDate: today,
+      openingAmount: null,
+      closingAmount: null,
+      isOpen: false,
+    });
+    await defaultCounter.save();
+    counters = [defaultCounter];
   }
 
   responseHandler(
     res,
     200,
-    "Cashiering record fetched successfully",
+    "Today's cashiering counters retrieved successfully",
     "success",
-    doc
+    counters
   );
 });
+
 
 export {
   getAllCashieringOrders,
@@ -2016,4 +2126,6 @@ export {
   setClosingAmount,
   getAllCashieringHistory,
   getTodayCashiering,
+  createCounter,
+  deleteCounter
 };

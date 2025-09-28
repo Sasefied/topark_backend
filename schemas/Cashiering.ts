@@ -5,11 +5,13 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 export interface ICashiering extends Document {
   userId: mongoose.Schema.Types.ObjectId;
   dayDate: Date;
+  counterId: string;
   openingAmount?: number;
   openingDate?: Date;
   closingAmount?: number;
   closingDate?: Date;
   invoiceUrl?: string;
+  isOpen: boolean;
 }
 
 // Extend the Model interface to include aggregatePaginate
@@ -36,6 +38,7 @@ const cashieringSchema: Schema<ICashiering> = new Schema(
       type: Date,
       required: true,
     },
+    counterId:{type: String, required: true},
     openingAmount: {
       type: Number,
       default: 0,
@@ -53,6 +56,9 @@ const cashieringSchema: Schema<ICashiering> = new Schema(
     invoiceUrl: {
       type: String,
     },
+    isOpen: {
+      type: Boolean, default: false
+    }
   },
   { timestamps: true }
 );

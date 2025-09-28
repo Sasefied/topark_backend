@@ -201,14 +201,14 @@ export const setupCronJobs = () => {
         cashiering.invoiceUrl = invoiceUrl;
         await cashiering.save();
 
-        console.log(
-          `✅ Closed and generated invoice for cashiering record ${cashiering._id} for ${startOfYesterday.toDateString()}`
-        );
+        // console.log(
+        //   `✅ Closed and generated invoice for cashiering record ${cashiering._id} for ${startOfYesterday.toDateString()}`
+        // );
       }
 
-      console.log(
-        `✅ Auto-closed ${openCashierings.length} cashiering records for ${startOfYesterday.toDateString()}`
-      );
+      // console.log(
+      //   `✅ Auto-closed ${openCashierings.length} cashiering records for ${startOfYesterday.toDateString()}`
+      // );
     } catch (error) {
       console.error("❌ Error in auto-closing cashiering records:", error);
     }
