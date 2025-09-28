@@ -13,6 +13,7 @@ import {
   verifyUserPassword,
   setOpeningAmount,
   setClosingAmount,
+  getAllCashieringHistory,
 } from "../controllers/cashieringController";
 
 const router = Router();
@@ -29,6 +30,7 @@ router
   .post("/process-sell-orders", processCashieringSellOrder)
   .post("/verify-password", verifyUserPassword)
   .post("/set-opening-amount", setOpeningAmount)
-  .post("/set-closing-amount", setClosingAmount);
+  .post("/set-closing-amount", setClosingAmount)
+  .get("/all-cashiering-history", getAllCashieringHistory);
 
 export default router;

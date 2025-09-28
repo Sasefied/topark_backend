@@ -8,6 +8,7 @@ export interface ICashiering extends Document {
   openingDate?: Date;
   closingAmount?: number;
   closingDate?: Date;
+  invoiceUrl?: string;
 }
 
 // Define the schema
@@ -35,6 +36,9 @@ const cashieringSchema: Schema<ICashiering> = new Schema(
     },
     closingDate: {
       type: Date,
+    },
+    invoiceUrl: {
+      type: String,
     },
   },
   { timestamps: true }

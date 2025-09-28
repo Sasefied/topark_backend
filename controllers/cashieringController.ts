@@ -16,6 +16,7 @@ import SellOrderPayment from "../schemas/SellOrderPayment";
 import asyncHandler from "express-async-handler";
 import bcrypt from "bcryptjs";
 import Cashiering from "../schemas/Cashiering";
+import User from "../schemas/User";
 
 const getAllCashieringOrders = async (req: Request, res: Response) => {
   try {
@@ -1865,7 +1866,11 @@ const verifyUserPassword = asyncHandler(async (req, res) => {
     throw new BadRequestError("Password is required");
   }
 
-  const isMatch = await bcrypt.compare(password, password);
+  const user = await User.findById(req.userId).select("+password");
+  if(!user){
+    throw new UnauthorizedError("User not found");
+  }
+  const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
     throw new UnauthorizedError("Invalid password");
   }
@@ -1881,24 +1886,26 @@ function getToday(): Date {
 }
 
 const setOpeningAmount = asyncHandler(async (req, res) => {
-  const userId = req.userId
+  const userId = req.userId;
   const { openingAmount } = req.body;
 
   if (openingAmount === undefined) {
     throw new BadRequestError("Opening Amount are required");
   }
 
-   const today = getToday();
-   let doc = await Cashiering.findOne({ userId, dayDate: today });
+  const today = getToday();
+  let doc = await Cashiering.findOne({ userId, dayDate: today });
 
-   if (!doc) {
-     doc = new Cashiering({ userId, dayDate: today });
-   }
+  if (!doc) {
+    doc = new Cashiering({ userId, dayDate: today });
+  }
 
-   doc.openingAmount = openingAmount;
-   doc.openingDate = new Date();
-   await doc.save();
-})
+  doc.openingAmount = openingAmount;
+  doc.openingDate = new Date();
+  await doc.save();
+
+  responseHandler(res, 200, "Opening amount set successfully");
+});
 
 const setClosingAmount = asyncHandler(async (req, res) => {
   const userId = req.userId;
@@ -1918,7 +1925,39 @@ const setClosingAmount = asyncHandler(async (req, res) => {
   doc.closingAmount = closingAmount;
   doc.closingDate = new Date();
   await doc.save();
-})
+
+  responseHandler(res, 200, "Closing amount set successfully");
+});
+
+const getAllCashieringHistory = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  const { page = 1, limit = 10 } = req.query;
+
+  const cashieringAggregate = Cashiering.aggregate([
+    { $match: { userId } },
+    { $sort: { dayDate: -1 } },
+  ]);
+
+  const cashierings = await (Cashiering as any).aggregatePaginate(
+    cashieringAggregate,
+    {
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
+      customLabels: {
+        docs: "cashierings",
+        totalDocs: "totalCashierings",
+      },
+    }
+  );
+
+  responseHandler(
+    res,
+    200,
+    "Cashiering history fetched successfully",
+    "success",
+    cashierings
+  );
+});
 
 export {
   getAllCashieringOrders,
@@ -1933,5 +1972,6 @@ export {
   getAllCashieringOrdersCombined,
   verifyUserPassword,
   setOpeningAmount,
-  setClosingAmount
+  setClosingAmount,
+  getAllCashieringHistory,
 };
