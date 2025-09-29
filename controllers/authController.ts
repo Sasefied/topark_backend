@@ -692,3 +692,14 @@ export const deleteUserProfile = asyncHandler(
     responseHandler(res, 200, "User profile deleted successfully");
   }
 );
+
+export const getUsers = asyncHandler(
+async (req: Request, res: Response) => {
+  try {
+    const users = await User.find().select("_id email roles teamId");
+    res.status(200).json({ status: "success", data: users });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
+});

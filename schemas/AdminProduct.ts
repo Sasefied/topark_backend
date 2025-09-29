@@ -5,24 +5,24 @@ import Size from "./adminProductSize";
 export interface IAdminProduct extends Document {
   id: string;
   productName: string;
-  normalizedProductName?: string;
   productAlias?: string;
   productCode: string;
   variety?: string | null;
   referenceNumber?: string;
   size: string;
   color?: string | null;
-  // consTypes: "Bought" | "Commission" | "Expected";
   productType:
-    "Fruits" | "Vegetables" | "Exotic Fruits" | "Exotic Vegetables" | "Flowers" | "Exotic Flowers" | "Plants" | "Garden Plants";
-  vat?: number;
-  shelfLife? : number;
-  sellByType: "Box" | "Kg" | "Unit" | "Dozen" | "Liter" | "Packet" | "Gram" | "Pound" | "Ounce" | "Milliliter";
-  // allowOversold: boolean;
+    | "Fruits"
+    | "Vegetables"
+    | "Exotic Fruits"
+    | "Exotic Vegetables"
+    | "Flowers"
+    | "Exotic Flowers"
+    | "Plants"
+    | "Garden Plants";
   comments?: string;
   createdAt?: Date;
   updatedAt?: Date;
-  quantity: number;
 }
 
 export const generateProductCode = async (
@@ -72,45 +72,29 @@ export const generateProductCode = async (
   }
 };
 
-export const normalizeProductName = (str: string): string => {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z]/g, "")
-    .replace(/(.)\1+/g, "$1")
-    .trim();
-};
-
 const AdminProductSchema = new Schema<IAdminProduct>(
   {
     productName: { type: String, required: true },
-    normalizedProductName: { type: String, unique: true },
     productAlias: { type: String, required: false },
     productCode: { type: String, required: true, unique: true },
     variety: { type: String, required: false, default: null },
     referenceNumber: { type: String, required: false },
     size: { type: String, required: true },
     color: { type: String, required: false, default: null },
-    // consTypes: {
-    //   type: String,
-    //   enum: ["Bought", "Commission", "Expected"],
-    //   required: true,
-    // },
     productType: {
       type: String,
       enum: [
-        "Fruits","Vegetables","Exotic Fruits","Exotic Vegetables","Flowers","Exotic Flowers","Plants", "Garden Plants"
+        "Fruits",
+        "Vegetables",
+        "Exotic Fruits",
+        "Exotic Vegetables",
+        "Flowers",
+        "Exotic Flowers",
+        "Plants",
+        "Garden Plants",
       ],
-     
       required: true,
     },
-    sellByType:{
-        type: String,
-        enum: ["Box", "Kg", "Unit", "Dozen", "Liter", "Packet", "Gram", "Pound", "Ounce", "Milliliter"],
-      },
-      shelfLife: { type: Number, default: 0},
-  quantity: {type: Number, default: 0},
-    vat: { type: Number, default: false },
-    // allowOversold: { type: Boolean, required: true, default: false },
     comments: { type: String, required: false },
   },
   { timestamps: true, versionKey: false }
@@ -121,7 +105,6 @@ AdminProductSchema.pre("save", async function (next) {
     console.log("Pre-save hook triggered:", {
       isNew: this.isNew,
       productName: this.productName,
-      normalizedProductName: this.normalizedProductName,
       _id: this._id,
       color: this.color,
       size: this.size,
@@ -132,79 +115,12 @@ AdminProductSchema.pre("save", async function (next) {
       return next(new Error("productName is required"));
     }
 
-    if (this.isNew || this.isModified("productName")) {
-      const normalizedName = normalizeProductName(this.productName);
-      if (!normalizedName) {
-        console.error(
-          "Invalid normalizedProductName for productName:",
-          this.productName
-        );
-        return next(new Error("Invalid product name: cannot normalize"));
-      }
-      this.normalizedProductName = normalizedName;
-      console.log("Set normalizedProductName:", normalizedName);
-
-      const existingProduct = await AdminProduct.findOne({
-        normalizedProductName: normalizedName,
-        _id: { $ne: this._id },
-      });
-      if (existingProduct) {
-        console.error("Duplicate normalizedProductName found:", {
-          normalizedName,
-          existingProduct: existingProduct.productName,
-        });
-        return next(
-          new Error(
-            `Product with similar name "${this.productName}" already exists`
-          )
-        );
-      }
-    }
-
-    // Define allowlists for colors and sizes
-    const validColors = [
-      "Red",
-      "Yellow",
-      "Orange",
-      "Green",
-      "White",
-      "Blue",
-      "Black",
-      "Purple",
-      "Pink",
-      "Grey",
-      // Add more as needed
-    ];
-    const validSizes = [
-      "Small",
-      "Medium",
-      "Large",
-      "Extra Small",
-      "Extra Large",
-      "XS",
-      "S",
-      "M",
-      "L",
-      "XL",
-      "XXL",
-      // Add more as needed
-    ];
-
     // Validate and save color
     if (this.color) {
       const trimmedColor = this.color.trim();
       if (!trimmedColor) {
         this.color = null; // Handle empty color as null
       } else {
-        // Check if color is mistakenly a size (allow custom colors not in allowlist)
-        if (
-          !validColors.includes(trimmedColor) &&
-          validSizes.includes(trimmedColor)
-        ) {
-          return next(
-            new Error(`Invalid color "${trimmedColor}": appears to be a size`)
-          );
-        }
         await Color.findOneAndUpdate(
           { name: trimmedColor },
           { name: trimmedColor },
@@ -220,15 +136,6 @@ AdminProductSchema.pre("save", async function (next) {
       const trimmedSize = this.size.trim();
       if (!trimmedSize) {
         return next(new Error("Size cannot be empty"));
-      }
-      // Check if size is mistakenly a color (allow custom sizes not in allowlist)
-      if (
-        !validSizes.includes(trimmedSize) &&
-        validColors.includes(trimmedSize)
-      ) {
-        return next(
-          new Error(`Invalid size "${trimmedSize}": appears to be a color`)
-        );
       }
       await Size.findOneAndUpdate(
         { name: trimmedSize },
@@ -248,7 +155,6 @@ AdminProductSchema.pre("save", async function (next) {
   }
 });
 
-AdminProductSchema.index({ normalizedProductName: 1 }, { unique: true });
 AdminProductSchema.index({ productCode: 1 }, { unique: true });
 
 export const AdminProduct = model<IAdminProduct>(

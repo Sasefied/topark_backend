@@ -90,104 +90,104 @@ const getAllInventories: RequestHandler = async (req, res) => {
   }
 };
 
-const addStockOnInventory: RequestHandler = async (req, res) => {
-  try {
-    const {
-      clientId,
-      adminProductId,
-      grade,
-      pricePerUnit,
-      qtyInStock,
-      qtyIncoming,
-      sourceCountry,
-      ccy,
-      buyingPrice,
-      tradingPrice,
-    } = req.body;
+// const addStockOnInventory: RequestHandler = async (req, res) => {
+//   try {
+//     const {
+//       clientId,
+//       adminProductId,
+//       grade,
+//       pricePerUnit,
+//       qtyInStock,
+//       qtyIncoming,
+//       sourceCountry,
+//       ccy,
+//       buyingPrice,
+//       tradingPrice,
+//     } = req.body;
 
-    // Validate required fields
-    if (
-      !adminProductId ||
-      !grade ||
-      !pricePerUnit ||
-      qtyInStock === undefined ||
-      qtyIncoming === undefined ||
-      !sourceCountry ||
-      !ccy ||
-      !buyingPrice ||
-      !tradingPrice
-    ) {
-      res.status(400).json({ message: "All fields are required" });
-      return;
-    }
+//     // Validate required fields
+//     if (
+//       !adminProductId ||
+//       !grade ||
+//       !pricePerUnit ||
+//       qtyInStock === undefined ||
+//       qtyIncoming === undefined ||
+//       !sourceCountry ||
+//       !ccy ||
+//       !buyingPrice ||
+//       !tradingPrice
+//     ) {
+//       res.status(400).json({ message: "All fields are required" });
+//       return;
+//     }
 
-    // Validate ObjectId fields
-    if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
-      res.status(400).json({ message: "Invalid adminProductId format" });
-      return;
-    }
+//     // Validate ObjectId fields
+//     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
+//       res.status(400).json({ message: "Invalid adminProductId format" });
+//       return;
+//     }
 
-    // Validate referenced documents
-    const product = await AdminProduct.findById(adminProductId);
-    if (!product) {
-      res.status(404).json({ message: "Product not found" });
-      return;
-    }
+//     // Validate referenced documents
+//     const product = await AdminProduct.findById(adminProductId);
+//     if (!product) {
+//       res.status(404).json({ message: "Product not found" });
+//       return;
+//     }
 
-    // const existedInventoryProduct = await Inventory.findOne({
-    //   userId: req.userId,
-    //   adminProductId,
-    // });
+//     // const existedInventoryProduct = await Inventory.findOne({
+//     //   userId: req.userId,
+//     //   adminProductId,
+//     // });
 
-    // if (existedInventoryProduct) {
-    //   await Inventory.updateOne(
-    //     {
-    //       _id: existedInventoryProduct._id,
-    //     },
-    //     {
-    //       $inc: {
-    //         qtyInStock,
-    //         qtyIncoming,
-    //       },
-    //       $set: {
-    //         pricePerUnit,
-    //         sourceCountry,
-    //         ccy,
-    //         buyingPrice,
-    //         tradingPrice,
-    //       },
-    //     }
-    //   );
-    // }
-    //  else {
+//     // if (existedInventoryProduct) {
+//     //   await Inventory.updateOne(
+//     //     {
+//     //       _id: existedInventoryProduct._id,
+//     //     },
+//     //     {
+//     //       $inc: {
+//     //         qtyInStock,
+//     //         qtyIncoming,
+//     //       },
+//     //       $set: {
+//     //         pricePerUnit,
+//     //         sourceCountry,
+//     //         ccy,
+//     //         buyingPrice,
+//     //         tradingPrice,
+//     //       },
+//     //     }
+//     //   );
+//     // }
+//     //  else {
       
-    // }
-    await Inventory.create({
-        userId: req.userId,
-        clientId: clientId || req.userId,
-        adminProductId,
-        grade: grade.toUpperCase(),
-        pricePerUnit,
-        qtyInStock,
-        qtyIncoming,
-        sourceCountry: sourceCountry.toUpperCase(),
-        ccy: ccy.toUpperCase(),
-        buyingPrice,
-        tradingPrice,
-      });
+//     // }
+//     await Inventory.create({
+//         userId: req.userId,
+//         clientId: clientId || req.userId,
+//         adminProductId,
+//         grade: grade.toUpperCase(),
+//         pricePerUnit,
+//         qtyInStock,
+//         qtyIncoming,
+//         sourceCountry: sourceCountry.toUpperCase(),
+//         ccy: ccy.toUpperCase(),
+//         buyingPrice,
+//         tradingPrice,
+//       });
 
-    res.status(200).json({ message: "Stock added to inventory successfully" });
-  } catch (error: any) {
-    console.error(
-      "Error adding stock to inventory:",
-      error.message,
-      error.stack
-    );
-    res
-      .status(400)
-      .json({ message: error.message || "Error adding stock to inventory" });
-  }
-};
+//     res.status(200).json({ message: "Stock added to inventory successfully" });
+//   } catch (error: any) {
+//     console.error(
+//       "Error adding stock to inventory:",
+//       error.message,
+//       error.stack
+//     );
+//     res
+//       .status(400)
+//       .json({ message: error.message || "Error adding stock to inventory" });
+//   }
+// };
 
 const getAllProductNames: RequestHandler = async (req, res) => {
   try {
@@ -371,6 +371,130 @@ const updateTradingPrice = asyncHandler(async (req: Request, res: Response) => {
 
   responseHandler(res, 200, "Trading price updated successfully", "success");
 });
+
+
+const addStockOnInventory: RequestHandler = async (req, res) => {
+  try {
+    const {
+      clientId,
+      adminProductId,
+      size,
+      color,
+      vat,
+      sellBy,
+      boxSize,
+      shelfLife,
+      season,
+      month,
+      countryOfOrigin,
+    } = req.body;
+
+    // Validate required fields
+    // if (
+    //   !adminProductId ||
+    //   !size ||
+    //   !sellBy ||
+    //   !shelfLife ||
+    //   !season ||
+    //   !month ||
+    //   !countryOfOrigin
+    // ) {
+    //   res.status(400).json({ message: "All required fields must be provided" });
+    //   return;
+    // }
+
+    // Validate ObjectId fields
+    if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
+      res.status(400).json({ message: "Invalid adminProductId format" });
+      return;
+    }
+    if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
+      res.status(400).json({ message: "Invalid clientId format" });
+      return;
+    }
+
+    // Validate referenced documents
+    const product = await AdminProduct.findById(adminProductId);
+    if (!product) {
+      res.status(400).json({ message: "Product not found" });
+      return;
+    }
+
+    // Validate season (array of months)
+    const validMonths = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    if (!Array.isArray(season) || !season.every((m: string) => validMonths.includes(m))) {
+      res.status(400).json({ message: "Invalid season format. Must be an array of valid months." });
+      return;
+    }
+
+    // Validate month (array of months)
+    if (!Array.isArray(month) || month.length === 0 || !month.every((m: string) => validMonths.includes(m))) {
+      res.status(400).json({ message: "Invalid month format. Must be a non-empty array of valid months." });
+      return;
+    }
+
+    // Validate sellBy
+    const validSellByTypes = [
+      "Box", "Kg", "Unit", "Dozen", "Liter", "Packet", "Gram", "Pound", "Ounce", "Milliliter"
+    ];
+    if (!validSellByTypes.includes(sellBy)) {
+      res.status(400).json({ message: `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}` });
+      return;
+    }
+
+    // Validate boxSize based on sellBy
+    if (sellBy === "Box" && (!boxSize || typeof boxSize !== "string")) {
+      res.status(400).json({ message: "Box size is required when sellBy is 'Box'" });
+      return;
+    }
+    if (sellBy !== "Box" && boxSize) {
+      res.status(400).json({ message: "Box size should not be provided when sellBy is not 'Box'" });
+      return;
+    }
+
+    // Validate size and color against AdminProduct
+    if (size !== product.size) {
+      res.status(400).json({ message: `Size "${size}" does not match product's size "${product.size}"` });
+      return;
+    }
+    if (color && product.color && color !== product.color) {
+      res.status(400).json({ message: `Color "${color}" does not match product's color "${product.color}"` });
+      return;
+    }
+
+    // Validate vat
+    if (isNaN(parseFloat(vat)) || parseFloat(vat) < 0) {
+      res.status(400).json({ message: "VAT must be a non-negative number" });
+      return;
+    }
+
+    // Create inventory entry
+    const inventoryEntry = await Inventory.create({
+      userId: req.userId,
+      clientId: clientId || req.userId,
+      adminProductId,
+      size,
+      color: color || null,
+      vat: parseFloat(vat),
+      sellBy,
+      boxSize: sellBy === "Box" ? boxSize : undefined,
+      shelfLife,
+      season,
+      month, // Now an array
+      countryOfOrigin,
+    });
+
+    res.status(201).json({ message: "Stock added to inventory successfully", inventory: inventoryEntry });
+  } catch (error: any) {
+    console.error("Error adding stock to inventory:", error.message, error.stack);
+    res.status(400).json({ message: error.message || "Error adding stock to inventory" });
+  }
+};
+
+export default addStockOnInventory;
 
 export {
   getAllInventories,

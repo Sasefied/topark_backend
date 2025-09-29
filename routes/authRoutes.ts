@@ -7,6 +7,7 @@ import {
   getUserProfile,
   updateUserProfile,
   deleteUserProfile,
+  getUsers,
 } from "../controllers/authController";
 import { updateUserProfileValidator } from "../validators/authValidatore";
 import { validate } from "../middlewares/validate";
@@ -26,6 +27,6 @@ router.put(
     updateUserProfile
   )
 router.delete("/profile", authMiddleware, deleteUserProfile);
-
+router.get("/users", authMiddleware, getUsers)
 export default router;
  
