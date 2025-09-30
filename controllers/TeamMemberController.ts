@@ -373,45 +373,151 @@ export const listAllTeamMembers = async (
 ): Promise<void> => {
   try {
     const userId = req.userId;
-
     if (!userId) {
       console.log("listAllTeamMembers - Error: Unauthorized, userId missing");
       responseHandler(res, 401, "Unauthorized");
       return;
     }
 
-    console.log("listAllTeamMembers - Querying teams for userId:", userId);
-
-    const teams = await Team.find({ createdBy: userId })
-      .select("teamName members")
+    // Fetch requesting user for context
+    const requestingUser = await User.findById(userId)
+      .select("email roles teamId")
       .lean()
       .exec();
-
-    if (!teams || teams.length === 0) {
-      console.log("listAllTeamMembers - No teams found for userId:", userId);
-      responseHandler(res, 404, "No teams found where you are the Admin");
+    if (!requestingUser) {
+      console.log("listAllTeamMembers - Requesting user not found", { userId });
+      responseHandler(res, 401, "Unauthorized");
       return;
     }
 
-    const allMembers = teams.flatMap((team) =>
-      (team.members || []).map((member) => ({
-        teamId: team._id.toString(),
-        teamName: team.teamName, 
-        email: member.email,
-        roles: member.roles,
-        status: member.status,
-        memberId: member._id?.toString(),
-      }))
+    // Admin (team creator) path: return all members across created teams
+    const adminTeams = await Team.find({ createdBy: userId })
+      .select("teamName members createdBy")
+      .lean()
+      .exec();
+
+    if (adminTeams.length > 0) {
+      const allMembers: any[] = [];
+      adminTeams.forEach((team: any) => {
+        (team.members || []).forEach((member: any) => {
+          allMembers.push({
+            teamId: team._id.toString(),
+            teamName: team.teamName,
+            email: member.email,
+            roles: member.roles,
+            status: member.status,
+            memberId: member._id?.toString(),
+          });
+        });
+      });
+      console.log("listAllTeamMembers - Admin view member count:", allMembers.length);
+      responseHandler(
+        res,
+        200,
+        "All team members fetched successfully",
+        "success",
+        allMembers
+      );
+      return;
+    }
+
+    // Non-admin path: must have a teamId membership
+    if (!requestingUser.teamId) {
+      console.log("listAllTeamMembers - Non-admin user without teamId");
+      responseHandler(res, 404, "No team membership found");
+      return;
+    }
+
+    const team = await Team.findById(requestingUser.teamId)
+      .select("teamName members createdBy")
+      .lean()
+      .exec();
+    if (!team) {
+      console.log("listAllTeamMembers - Team not found for teamId", { teamId: requestingUser.teamId?.toString() });
+      responseHandler(res, 404, "Team not found");
+      return;
+    }
+
+    const reqEmailLower = (requestingUser.email || "").toLowerCase();
+
+    // Find self member entry
+    let selfMember: any = (team.members || []).find((m: any) => (m.email || "").toLowerCase() === reqEmailLower || (m.user && m.user.toString() === userId));
+    if (!selfMember) {
+      selfMember = {
+        _id: requestingUser._id,
+        email: requestingUser.email,
+        roles: requestingUser.roles || [],
+        status: "pending",
+      };
+    }
+
+    // Find admin in members
+    let adminMember: any = (team.members || []).find(
+      (m: any) => Array.isArray(m.roles) && m.roles.some((r: string) => r.toLowerCase() === "admin")
     );
 
-    console.log("listAllTeamMembers - Found members:", allMembers);
+    // If admin not in list, synthesize from creator
+    if (!adminMember) {
+      const creatorUser = await User.findById(team.createdBy)
+        .select("email roles")
+        .lean()
+        .exec();
+      if (creatorUser) {
+        let creatorRoles: string[] = Array.isArray(creatorUser.roles) ? [...creatorUser.roles] : [];
+        if (!creatorRoles.some((r) => r.toLowerCase() === "admin")) {
+          creatorRoles.push("Admin");
+        }
+        adminMember = {
+          _id: team.createdBy,
+          email: creatorUser.email,
+          roles: creatorRoles,
+          status: "active",
+        };
+      }
+    }
 
+    const limited: any[] = [];
+    if (adminMember) {
+      limited.push({
+        teamId: team._id.toString(),
+        teamName: team.teamName,
+        email: adminMember.email,
+        roles: adminMember.roles,
+        status: adminMember.status,
+        memberId: adminMember._id?.toString(),
+      });
+    }
+    const adminEmailLower = adminMember?.email?.toLowerCase();
+    const selfIsAdmin = adminEmailLower && adminEmailLower === reqEmailLower;
+    if (!selfIsAdmin) {
+      limited.push({
+        teamId: team._id.toString(),
+        teamName: team.teamName,
+        email: selfMember.email,
+        roles: selfMember.roles,
+        status: selfMember.status,
+        memberId: selfMember._id?.toString(),
+      });
+    }
+
+    // Sort: admin first, then self
+    limited.sort((a: any, b: any) => {
+      const aIsAdmin = Array.isArray(a.roles) && a.roles.map((r: string) => r.toLowerCase()).indexOf("admin") !== -1;
+      const bIsAdmin = Array.isArray(b.roles) && b.roles.map((r: string) => r.toLowerCase()).indexOf("admin") !== -1;
+      if (aIsAdmin && !bIsAdmin) return -1;
+      if (!aIsAdmin && bIsAdmin) return 1;
+      if (a.email === requestingUser.email) return 1; // keep admin first
+      if (b.email === requestingUser.email) return -1;
+      return a.email.localeCompare(b.email);
+    });
+
+    console.log("listAllTeamMembers - Non-admin filtered view:", limited.map(m => ({ email: m.email, roles: m.roles, status: m.status })));
     responseHandler(
       res,
       200,
-      "All team members fetched successfully",
+      "Team members fetched successfully",
       "success",
-      allMembers
+      limited
     );
   } catch (error) {
     console.error("listAllTeamMembers - Error:", error);
