@@ -3,9 +3,7 @@ import {
   AdminProduct,
   IAdminProduct,
   generateProductCode,
-  normalizeProductName,
 } from "../schemas/AdminProduct";
-
 import mongoose from "mongoose";
 import Color from "../schemas/adminProductColor";
 import Size from "../schemas/adminProductSize";
@@ -17,8 +15,21 @@ export const getAllProducts = async (
   res: Response
 ): Promise<void> => {
   try {
-    const products = await AdminProduct.find();
-    res.status(200).json(products);
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      AdminProduct.find().skip(skip).limit(limit),
+      AdminProduct.countDocuments(),
+    ]);
+
+    res.status(200).json({
+      products,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error: any) {
     console.error("Error fetching products:", error.message, error.stack);
     res
@@ -65,7 +76,6 @@ export const createProduct = async (
     const requiredFields: (keyof ProductData)[] = [
       "productName",
       "size",
-      // "consTypes",
       "productType",
     ];
     for (const field of requiredFields) {
@@ -81,20 +91,6 @@ export const createProduct = async (
       }
     }
 
-    const normalizedName = normalizeProductName(productData.productName!);
-    console.log("Normalized name:", normalizedName); // Debug
-    const existingProduct = await AdminProduct.findOne({
-      normalizedProductName: normalizedName,
-    });
-    if (existingProduct) {
-      res
-        .status(400)
-        .json({
-          message: `Product with similar name "${productData.productName}" already exists`,
-        });
-      return;
-    }
-
     const generatedProductCode = await generateProductCode(
       productData.productName!,
       productData.variety
@@ -104,7 +100,6 @@ export const createProduct = async (
     const newProduct = new AdminProduct({
       ...productData,
       productCode: generatedProductCode,
-      normalizedProductName: normalizedName,
     });
     await newProduct.save();
     res.status(201).json({
@@ -121,19 +116,12 @@ export const createProduct = async (
       res.status(400).json({ message: "Validation error", errors });
       return;
     }
-    if (error.message.includes("already exists") || error.code === 11000) {
-      res
-        .status(400)
-        .json({
-          message: `Product with similar name "${req.body.productName}" already exists`,
-        });
-      return;
-    }
     res
       .status(500)
       .json({ message: "Error creating product", error: error.message });
   }
 };
+
 export const updateProduct = async (
   req: Request,
   res: Response
@@ -145,24 +133,6 @@ export const updateProduct = async (
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       res.status(400).json({ message: "Invalid product ID format" });
       return;
-    }
-
-    if (updateData.productName) {
-      updateData.normalizedProductName = normalizeProductName(
-        updateData.productName
-      );
-      const existingProduct = await AdminProduct.findOne({
-        normalizedProductName: updateData.normalizedProductName,
-        _id: { $ne: productId },
-      });
-      if (existingProduct) {
-        res
-          .status(400)
-          .json({
-            message: `Product with similar name "${updateData.productName}" already exists`,
-          });
-        return;
-      }
     }
 
     const updatedProduct = await AdminProduct.findByIdAndUpdate(
@@ -186,14 +156,6 @@ export const updateProduct = async (
         message: err.message,
       }));
       res.status(400).json({ message: "Validation error", errors });
-      return;
-    }
-    if (error.message.includes("already exists") || error.code === 11000) {
-      res
-        .status(400)
-        .json({
-          message: `Product with similar name "${req.body.productName}" already exists`,
-        });
       return;
     }
     res
@@ -241,29 +203,16 @@ export const checkProductName = async (
         .json({ message: "Product name is required and must be a string" });
       return;
     }
-    const normalizedName = normalizeProductName(productName);
-    const existingProduct = await AdminProduct.findOne({
-      normalizedProductName: normalizedName,
-    });
-    if (existingProduct) {
-      res
-        .status(200)
-        .json({
-          exists: true,
-          message: `Product with similar name "${productName}" already exists`,
-        });
-      return;
-    }
     res.status(200).json({ exists: false });
   } catch (error) {
     console.error("Error checking product name:", error);
     res.status(500).json({ message: "Failed to check product name" });
   }
 };
+
 export const getColors = async (req: Request, res: Response): Promise<void> => {
   console.log("getColors called with params:", req.params, "query:", req.query);
   try {
-    // Remove any productId validation
     const colors = await Color.find().select("name");
     if (!colors.length) {
       res.status(404).json({ message: "No colors found" });
@@ -281,7 +230,6 @@ export const getColors = async (req: Request, res: Response): Promise<void> => {
 
 export const getSizes = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Remove any productId validation
     const sizes = await Size.find().select("name");
     if (!sizes.length) {
       res.status(404).json({ message: "No sizes found" });
