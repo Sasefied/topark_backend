@@ -971,15 +971,15 @@ export const getAllClients = async (
           preserveNullAndEmptyArrays: true,
         },
       },
-      {
-        $match: {
-          $and: [
-            { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
-            { clientEmail: { $ne: req.userEmail } },
-            { userId: { $ne: null } },
-          ],
-        },
-      },
+      // {
+      //   $match: {
+      //     $and: [
+      //       { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
+      //       { clientEmail: { $ne: req.userEmail } },
+      //       { userId: { $ne: null } },
+      //     ],
+      //   },
+      // },
       {
         $lookup: {
           from: "users", // Adjust collection name
