@@ -97,6 +97,7 @@ export interface IInventory extends Document {
   color?: string | null;
   vat?: number;
   sellBy: "Box" | "Kg" | "Unit" | "Dozen" | "Liter" | "Packet" | "Gram" | "Pound" | "Ounce" | "Milliliter";
+  sellByQuantity:string;
   boxSize?: string;
   shelfLife: number;
   season: string[];
@@ -159,6 +160,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
       ],
       required: true,
     },
+    sellByQuantity:{ type:String, required:false, default: "" },
     boxSize: {
       type: String,
       required: function (this: IInventory) {

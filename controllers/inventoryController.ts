@@ -5,6 +5,7 @@ import { AdminProduct } from "../schemas/AdminProduct";
 import { responseHandler } from "../utils/responseHandler";
 import Order from "../schemas/Order";
 import asyncHandler from "express-async-handler";
+import Client from "../schemas/ClientDetails";
 
 const getAllInventories: RequestHandler = async (req, res) => {
   try {
@@ -373,6 +374,7 @@ const updateTradingPrice = asyncHandler(async (req: Request, res: Response) => {
 });
 
 
+
 const addStockOnInventory: RequestHandler = async (req, res) => {
   try {
     const {
@@ -389,86 +391,70 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       countryOfOrigin,
     } = req.body;
 
-    // Validate required fields
-    // if (
-    //   !adminProductId ||
-    //   !size ||
-    //   !sellBy ||
-    //   !shelfLife ||
-    //   !season ||
-    //   !month ||
-    //   !countryOfOrigin
-    // ) {
-    //   res.status(400).json({ message: "All required fields must be provided" });
-    //   return;
-    // }
-
     // Validate ObjectId fields
     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
-      res.status(400).json({ message: "Invalid adminProductId format" });
-      return;
+      return res.status(400).json({ message: "Invalid adminProductId format" });
     }
     if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
-      res.status(400).json({ message: "Invalid clientId format" });
-      return;
+      return res.status(400).json({ message: "Invalid clientId format" });
     }
 
     // Validate referenced documents
     const product = await AdminProduct.findById(adminProductId);
     if (!product) {
-      res.status(400).json({ message: "Product not found" });
-      return;
+      return res.status(400).json({ message: "Product not found" });
     }
 
-    // Validate season (array of months)
+    // Validate client if clientId is provided
+    let client = null;
+    if (clientId) {
+      client = await Client.findById(clientId);
+      if (!client) {
+        return res.status(400).json({ message: "Client not found" });
+      }
+    }
+
+    // Validate season
     const validMonths = [
       "January", "February", "March", "April", "May", "June",
       "July", "August", "September", "October", "November", "December",
     ];
     if (!Array.isArray(season) || !season.every((m: string) => validMonths.includes(m))) {
-      res.status(400).json({ message: "Invalid season format. Must be an array of valid months." });
-      return;
+      return res.status(400).json({ message: "Invalid season format. Must be an array of valid months." });
     }
 
-    // Validate month (array of months)
+    // Validate month
     if (!Array.isArray(month) || month.length === 0 || !month.every((m: string) => validMonths.includes(m))) {
-      res.status(400).json({ message: "Invalid month format. Must be a non-empty array of valid months." });
-      return;
+      return res.status(400).json({ message: "Invalid month format. Must be a non-empty array of valid months." });
     }
 
     // Validate sellBy
     const validSellByTypes = [
-      "Box", "Kg", "Unit", "Dozen", "Liter", "Packet", "Gram", "Pound", "Ounce", "Milliliter"
+      "Box", "Kg", "Unit", "Dozen", "Liter", "Packet", "Gram", "Pound", "Ounce", "Milliliter",
     ];
     if (!validSellByTypes.includes(sellBy)) {
-      res.status(400).json({ message: `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}` });
-      return;
+      return res.status(400).json({ message: `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}` });
     }
 
     // Validate boxSize based on sellBy
     if (sellBy === "Box" && (!boxSize || typeof boxSize !== "string")) {
-      res.status(400).json({ message: "Box size is required when sellBy is 'Box'" });
-      return;
+      return res.status(400).json({ message: "Box size is required when sellBy is 'Box'" });
     }
     if (sellBy !== "Box" && boxSize) {
-      res.status(400).json({ message: "Box size should not be provided when sellBy is not 'Box'" });
-      return;
+      return res.status(400).json({ message: "Box size should not be provided when sellBy is not 'Box'" });
     }
 
     // Validate size and color against AdminProduct
     if (size !== product.size) {
-      res.status(400).json({ message: `Size "${size}" does not match product's size "${product.size}"` });
-      return;
+      return res.status(400).json({ message: `Size "${size}" does not match product's size "${product.size}"` });
     }
     if (color && product.color && color !== product.color) {
-      res.status(400).json({ message: `Color "${color}" does not match product's color "${product.color}"` });
-      return;
+      return res.status(400).json({ message: `Color "${color}" does not match product's color "${product.color}"` });
     }
 
     // Validate vat
     if (isNaN(parseFloat(vat)) || parseFloat(vat) < 0) {
-      res.status(400).json({ message: "VAT must be a non-negative number" });
-      return;
+      return res.status(400).json({ message: "VAT must be a non-negative number" });
     }
 
     // Create inventory entry
@@ -483,18 +469,29 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       boxSize: sellBy === "Box" ? boxSize : undefined,
       shelfLife,
       season,
-      month, // Now an array
+      month,
       countryOfOrigin,
     });
 
-    res.status(201).json({ message: "Stock added to inventory successfully", inventory: inventoryEntry });
+    // Update client's inventoryIds if clientId is provided
+    if (clientId && client) {
+      await Client.findByIdAndUpdate(
+        clientId,
+        { $addToSet: { inventoryIds: inventoryEntry._id } }, // Add inventory ID to client's inventoryIds
+        { new: true }
+      );
+    }
+
+    return res.status(201).json({ message: "Stock added to inventory and associated with client successfully", inventory: inventoryEntry });
   } catch (error: any) {
     console.error("Error adding stock to inventory:", error.message, error.stack);
-    res.status(400).json({ message: error.message || "Error adding stock to inventory" });
+    return res.status(400).json({ message: error.message || "Error adding stock to inventory" });
   }
 };
 
-export default addStockOnInventory;
+
+
+
 
 export {
   getAllInventories,
