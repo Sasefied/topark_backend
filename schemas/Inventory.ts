@@ -107,10 +107,8 @@ export interface IInventory extends Document {
     | "Ounce"
     | "Milliliter";
   sellByQuantity: string;
-  boxSize?: string;
   shelfLife: number;
   season: string[];
-  month: string[];
   countryOfOrigin: string;
   qtyInStock: number;
   qtyIncoming: number;
@@ -171,13 +169,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
       required: true,
     },
     sellByQuantity: { type: String, required: false, default: "" },
-    boxSize: {
-      type: String,
-      required: function (this: IInventory) {
-        return this.sellBy === "Box";
-      },
-      trim: true,
-    },
+    
     shelfLife: {
       type: Number,
       required: true,
@@ -203,26 +195,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
         required: true,
       },
     ],
-    month: [
-      {
-        type: String,
-        enum: [
-          "January",
-          "February",
-          "March",
-          "April",
-          "May",
-          "June",
-          "July",
-          "August",
-          "September",
-          "October",
-          "November",
-          "December",
-        ],
-        required: true,
-      },
-    ],
+  
     countryOfOrigin: {
       type: String,
       required: true,

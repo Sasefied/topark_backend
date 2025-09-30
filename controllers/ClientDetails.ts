@@ -64,10 +64,9 @@ const addStockOnInventory = async (
     color,
     vat,
     sellBy,
-    boxSize,
+    sellByQuantity,
     shelfLife,
     season,
-    month,
     countryOfOrigin,
     variety,
   } = product;
@@ -97,31 +96,14 @@ const addStockOnInventory = async (
     );
   }
 
-  // Validate month
-  if (
-    !Array.isArray(month) ||
-    month.length === 0 ||
-    !month.every((m: string) => VALID_MONTHS.includes(m))
-  ) {
-    throw new BadRequestError(
-      "Invalid month format. Must be a non-empty array of valid months."
-    );
-  }
+
 
   // Validate sellBy
   if (!VALID_SELL_BY_TYPES.includes(sellBy)) {
     throw new BadRequestError("Invalid sellBy type");
   }
 
-  // Validate boxSize based on sellBy
-  if (sellBy === "Box" && (!boxSize || typeof boxSize !== "string")) {
-    throw new BadRequestError("Box size is required when sellBy is 'Box'");
-  }
-  if (sellBy !== "Box" && boxSize) {
-    throw new BadRequestError(
-      "Box size should be empty when sellBy is not 'Box'"
-    );
-  }
+
 
   // Validate size and color against AdminProduct
   if (size !== productExists.size) {
@@ -146,12 +128,11 @@ const addStockOnInventory = async (
         color: color || null,
         vat: vat !== undefined ? parseFloat(vat.toString()) : undefined,
         sellBy,
-        boxSize: sellBy === "Box" ? boxSize : undefined,
         shelfLife,
         season,
-        month,
         countryOfOrigin,
         variety,
+        sellByQuantity
       },
     ],
     { session }
@@ -1124,7 +1105,7 @@ export const getAllClients = async (
                 color: { $ifNull: ["$$product.color", null] },
                 vat: { $ifNull: ["$$product.vat", null] },
                 sellBy: "$$product.sellBy",
-                boxSize: { $ifNull: ["$$product.boxSize", null] },
+                sellByQuantity: { $ifNull: ["$$product.sellByQuantity", null] },
                 shelfLife: { $ifNull: ["$$product.shelfLife", null] },
                 season: { $ifNull: ["$$product.season", []] },
                 month: { $ifNull: ["$$product.month", []] },
@@ -1980,7 +1961,7 @@ export const getProductByClientId = async (
           color: { $ifNull: ["$color", null] },
           vat: { $ifNull: ["$vat", null] },
           sellBy: 1,
-          boxSize: { $ifNull: ["$boxSize", null] },
+          sellByQuantity: { $ifNull: ["$sellByQuantity", null] },
           shelfLife: { $ifNull: ["$shelfLife", null] },
           season: { $ifNull: ["$season", []] },
           month: { $ifNull: ["$month", []] },
