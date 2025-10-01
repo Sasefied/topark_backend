@@ -1914,21 +1914,21 @@ export const getProductByClientId = async (
       responseHandler(res, 400, "Invalid or missing userId", "error");
       return;
     }
-    if (!clientId || !Types.ObjectId.isValid(clientId as string)) {
-      responseHandler(
-        res,
-        400,
-        "Invalid or missing clientId; must be a valid ObjectId",
-        "error"
-      );
-      return;
-    }
+    // if (!clientId || !Types.ObjectId.isValid(clientId as string)) {
+    //   responseHandler(
+    //     res,
+    //     400,
+    //     "Invalid or missing clientId; must be a valid ObjectId",
+    //     "error"
+    //   );
+    //   return;
+    // }
 
     // Convert clientId to ObjectId
-    const clientObjectId = new Types.ObjectId(clientId as string);
+    // const clientObjectId = new Types.ObjectId(clientId as string);
 
     // Verify client exists
-    const client = await Client.findById(clientObjectId).select("_id").lean();
+    const client = await Client.findOne({clientId}).select("_id").lean();
     if (!client) {
       responseHandler(res, 404, "Client not found", "error");
       return;
@@ -1938,7 +1938,7 @@ export const getProductByClientId = async (
     const pipeline = [
       {
         $match: {
-          clientId: clientObjectId,
+          clientId
         },
       },
       {
