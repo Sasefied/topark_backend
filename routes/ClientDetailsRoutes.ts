@@ -11,6 +11,7 @@ import {
   updateClient,
 } from "../controllers/ClientDetails";
 import authMiddleware from "../middlewares/auth";
+import { addStockOnInventory } from "../controllers/inventoryController";
 
 const router = Router();
 
@@ -25,6 +26,6 @@ router.put("/:clientId", authMiddleware, updateClient); // Update a client by ID
 router.delete("/delete-client", authMiddleware, deleteClient); // Delete a client by ID
 
 router.post("/add-client-to-userList", authMiddleware, addClientToUser);
+router.post('/:clientId/addstock', authMiddleware, addStockOnInventory)
 router.get("/:clientId/products", authMiddleware, getProductByClientId);
-
 export default router;
