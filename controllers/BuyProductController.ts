@@ -31,7 +31,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
     }
 
     const myOfflineClient = await Client.find({ createdBy: req.userId })
-      .select("clientId")
+      .select("_id")
       .lean();
 
     const allowedClientIds = myClient?.client?.map(
@@ -40,8 +40,8 @@ const searchBuyProducts = async (req: Request, res: Response) => {
 
     if (myOfflineClient && myOfflineClient.length > 0) {
       myOfflineClient.forEach((client) => {
-        if (!allowedClientIds.includes(client.clientId)) {
-          allowedClientIds.push(client.clientId);
+        if (!allowedClientIds.includes(client._id.toString())) {
+          allowedClientIds.push(client._id.toString());
         }
       });
     }

@@ -55,10 +55,10 @@ const validateCreditPeriod = (period: any): boolean =>
 const addStockOnInventory = async (
   userId: string,
   product: IInventory,
-  session: ClientSession
+  session: ClientSession,
+  clientId?: String
 ) => {
   const {
-    clientId,
     adminProductId,
     size,
     color,
@@ -96,14 +96,10 @@ const addStockOnInventory = async (
     );
   }
 
-
-
   // Validate sellBy
   if (!VALID_SELL_BY_TYPES.includes(sellBy)) {
     throw new BadRequestError("Invalid sellBy type");
   }
-
-
 
   // Validate size and color against AdminProduct
   if (size !== productExists.size) {
@@ -132,7 +128,7 @@ const addStockOnInventory = async (
         season,
         countryOfOrigin,
         variety,
-        sellByQuantity
+        sellByQuantity,
       },
     ],
     { session }
@@ -360,7 +356,12 @@ export const createClient = async (
     if (Array.isArray(products) && products.length > 0) {
       await Promise.all(
         products.map((product: IInventory) =>
-          addStockOnInventory(req.userId!, product, session)
+          addStockOnInventory(
+            req.userId!,
+            product,
+            session,
+            String(newClient._id)
+          )
         )
       );
     }
@@ -1908,7 +1909,7 @@ export const getProductByClientId = async (
     const { clientId } = req.params;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
- console.log(clientId)
+    console.log(clientId);
     // Validate inputs
     if (!userId || !Types.ObjectId.isValid(userId)) {
       responseHandler(res, 400, "Invalid or missing userId", "error");
