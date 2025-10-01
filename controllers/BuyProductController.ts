@@ -3,6 +3,7 @@ import Inventory from "../schemas/Inventory";
 import { responseHandler } from "../utils/responseHandler";
 import { Types } from "mongoose";
 import MyClientModel from "../schemas/MyClient";
+import Client from "../schemas/ClientDetails";
 
 const searchBuyProducts = async (req: Request, res: Response) => {
   try {
@@ -29,7 +30,21 @@ const searchBuyProducts = async (req: Request, res: Response) => {
       });
     }
 
-    const allowedClientIds = myClient?.client?.map((client: any) => client.userId);
+    const myOfflineClient = await Client.find({ createdBy: req.userId })
+      .select("_id")
+      .lean();
+
+    const allowedClientIds = myClient?.client?.map(
+      (client: any) => client.userId
+    );
+
+    if (myOfflineClient && myOfflineClient.length > 0) {
+      myOfflineClient.forEach((client) => {
+        if (!allowedClientIds.includes(client._id.toString())) {
+          allowedClientIds.push(client._id.toString());
+        }
+      });
+    }
 
     console.log("allowedClientIds:", allowedClientIds);
     console.log("userId", req.userId);
@@ -41,7 +56,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
           $and: [
             { userId: { $ne: new Types.ObjectId(req.userId) } },
             { clientId: { $in: allowedClientIds } },
-          ]
+          ],
         },
       },
       // Lookup client first to filter by allowed client IDs
@@ -106,7 +121,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
             productCode: { $ifNull: ["$adminProduct.productCode", "N/A"] },
             size: { $ifNull: ["$adminProduct.size", "N/A"] },
             color: { $ifNull: ["$adminProduct.color", "N/A"] },
-            variety: {$ifNull: ["$adminProduct.variety", "N/A"]}
+            variety: { $ifNull: ["$adminProduct.variety", "N/A"] },
           },
           client: {
             _id: 1,

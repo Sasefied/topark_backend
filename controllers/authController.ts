@@ -135,6 +135,12 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
   } = req.body;
 
   try {
+    // Normalize emails early
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    const normalizedCompanyEmail = companyEmail
+      ? companyEmail.trim().toLowerCase()
+      : undefined;
+
     // Input validations
     if (!firstName || !lastName) {
       const error: SignupError = new Error('First name and last name are required');
@@ -166,7 +172,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email) || (companyEmail && !emailRegex.test(companyEmail))) {
+    if (!emailRegex.test(normalizedEmail) || (normalizedCompanyEmail && !emailRegex.test(normalizedCompanyEmail))) {
       const error: SignupError = new Error('Invalid email format');
       error.status = 400;
       error.code = 'INVALID_EMAIL';
@@ -183,7 +189,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       const error: SignupError = new Error('Email already registered');
       error.status = 409;
@@ -202,18 +208,15 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       throw error;
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create new user
+    // Create new user (raw password – pre-save hook hashes it)
     const user = new User({
       firstName,
       lastName,
       companyName,
-      companyEmail,
+      companyEmail: normalizedCompanyEmail,
       companyReferenceNumber,
-      email,
-      password: hashedPassword,
+      email: normalizedEmail,
+      password, // will be hashed by User schema pre-save hook
       consentGiven: !!consentGiven,
       roles: ['Admin'],
     });
@@ -222,20 +225,25 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     await user.save();
 
     // Create client record
-    const newClient = new Client({
-      userId: user._id,
-      clientId: companyReferenceNumber,
-      clientName: `${firstName} ${lastName}`.trim(),
-      registeredName: companyName,
-      clientEmail: email,
-    });
+    const existingClientEmail = await Client.findOne({ clientEmail: normalizedEmail });
+    let newClient;
+    if (!existingClientEmail) {
+      newClient = new Client({
+        userId: user._id,
+        clientId: companyReferenceNumber,
+        clientName: `${firstName} ${lastName}`.trim(),
+        registeredName: companyName,
+        clientEmail: normalizedEmail,
+      });
+      await newClient.save();
+    }
 
-    await newClient.save();
 
     res.status(201).json({
       message: 'User registered successfully',
       userId: user._id,
       email: user.email,
+      skippedClientCreation: !!existingClientEmail,
     });
 
   } catch (error: any) {
@@ -255,7 +263,6 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     });
   }
 };
-
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 
@@ -280,9 +287,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     const user = userDoc.toObject() as IUser;
-    console.log("user", user);
+    console.log("login - User found:", { userId: user._id, email });
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log("isMatch", isMatch);
+    console.log("login - Password match:", isMatch);
     if (!isMatch) {
       console.log("login - Password mismatch for email:", email);
       responseHandler(res, 401, "Invalid credentials", "error");
@@ -295,14 +302,34 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       responseHandler(
         res,
         403,
-        "Account is inactive. Contact your Admin.",
+        "Account deleted or inactive. Contact your Admin.",
         "error"
       );
       return;
     }
 
+    // Check if user is part of any team (non-admins only)
+    if (!user.roles.includes("Admin")) {
+      const teamCheck = await Team.findOne({
+        $or: [
+          { "members.user": user._id },
+          { "members.email": user.email },
+        ],
+      });
+      if (!teamCheck) {
+        console.log("login - User not part of any team:", { userId: user._id, email });
+        responseHandler(
+          res,
+          403,
+          "Account deleted or no team membership found. Contact your Admin.",
+          "error"
+        );
+        return;
+      }
+    }
+
     let team = await Team.findOne({ createdBy: user._id });
-    console.log("team-----------", team);
+    console.log("login - Team check:", { teamId: team?._id?.toString() });
     if (!team && user.roles.includes("Admin")) {
       console.log("login - Creating team for admin:", {
         userId: user._id,
@@ -331,7 +358,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         teamName: team.teamName,
       });
     }
-    //
+
     if (team && !user.teamId) {
       await User.findByIdAndUpdate(
         user._id,
@@ -354,7 +381,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       teamId: team ? String(team._id) : null,
     };
 
-    const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"; // Fallback for development
+    const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
     const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
 
     const token = jwt.sign(payload, JWT_SECRET, {
@@ -373,12 +400,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       data: {
         token,
         user: {
-          id: user._id.toString(), // Added id for authStore
+          id: user._id.toString(),
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
           roles: user.roles,
-          teamId: team ? String(team._id) : null, // Added teamId for authStore
+          teamId: team ? String(team._id) : null,
         },
         team: team
           ? {
@@ -398,6 +425,148 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
+// export const login = async (req: Request, res: Response): Promise<void> => {
+//   const { email, password } = req.body;
+
+//   if (!email || !password) {
+//     responseHandler(res, 400, "Email and password are required", "error");
+//     return;
+//   }
+
+//   // Validate email format
+//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//   if (!emailRegex.test(email)) {
+//     responseHandler(res, 400, "Invalid email format", "error");
+//     return;
+//   }
+
+//   try {
+//     const userDoc = await User.findOne({ email });
+//     if (!userDoc) {
+//       console.log("login - User not found for email:", email);
+//       responseHandler(res, 401, "Invalid credentials", "error");
+//       return;
+//     }
+
+//     const user = userDoc.toObject() as IUser;
+//     console.log("user", user);
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     console.log("isMatch", isMatch);
+//     if (!isMatch) {
+//       console.log("login - Password mismatch for email:", email);
+//       responseHandler(res, 401, "Invalid credentials", "error");
+//       return;
+//     }
+
+//     // Block inactive users
+//     if (user.status === "inactive") {
+//       console.log("login - Inactive user:", { userId: user._id, email });
+//       responseHandler(
+//         res,
+//         403,
+//         "Account is inactive. Contact your Admin.",
+//         "error"
+//       );
+//       return;
+//     }
+
+//     let team = await Team.findOne({ createdBy: user._id });
+//     console.log("team-----------", team);
+//     if (!team && user.roles.includes("Admin")) {
+//       console.log("login - Creating team for admin:", {
+//         userId: user._id,
+//         email,
+//       });
+//       team = new Team({
+//         teamName: `${user.companyName || "Default"} Team`,
+//         createdBy: user._id,
+//         members: [
+//           {
+//             user: user._id,
+//             email: user.email,
+//             roles: ["Admin"],
+//             status: "active",
+//           },
+//         ],
+//       });
+//       await team.save();
+//       await User.findByIdAndUpdate(
+//         user._id,
+//         { teamId: team._id },
+//         { new: true }
+//       );
+//       console.log("login - Team created:", {
+//         teamId: team._id,
+//         teamName: team.teamName,
+//       });
+//     }
+//     //
+//     if (team && !user.teamId) {
+//       await User.findByIdAndUpdate(
+//         user._id,
+//         { teamId: team._id },
+//         { new: true }
+//       );
+//       console.log("login - Updated user teamId:", {
+//         userId: user._id,
+//         teamId: team._id,
+//       });
+//     }
+
+//     const payload = {
+//       iss: "ToprakApp",
+//       sub: user._id.toString(),
+//       firstName: user.firstName,
+//       lastName: user.lastName,
+//       email: user.email,
+//       roles: user.roles,
+//       teamId: team ? String(team._id) : null,
+//     };
+
+//     const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"; // Fallback for development
+//     const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+
+//     const token = jwt.sign(payload, JWT_SECRET, {
+//       expiresIn: JWT_EXPIRES_IN,
+//     } as SignOptions);
+
+//     console.log("login - Generated token for user:", {
+//       userId: user._id.toString(),
+//       email: user.email,
+//       roles: user.roles,
+//       teamId: team ? String(team._id) : null,
+//     });
+
+//     res.status(200).json({
+//       status: "success",
+//       data: {
+//         token,
+//         user: {
+//           id: user._id.toString(), // Added id for authStore
+//           firstName: user.firstName,
+//           lastName: user.lastName,
+//           email: user.email,
+//           roles: user.roles,
+//           teamId: team ? String(team._id) : null, // Added teamId for authStore
+//         },
+//         team: team
+//           ? {
+//               id: team._id,
+//               teamName: team.teamName,
+//               primaryUsage: team.primaryUsage || null,
+//             }
+//           : null,
+//       },
+//     });
+//   } catch (error: any) {
+//     console.error("login - Error:", {
+//       message: error.message,
+//       stack: error.stack,
+//       email,
+//     });
+//     responseHandler(res, 500, "Internal server error", "error");
+//   }
+// };
 export const forgotPassword = async (
   req: Request,
   res: Response
@@ -687,9 +856,150 @@ export const updateUserProfile = asyncHandler(
 );
 export const deleteUserProfile = asyncHandler(
   async (req: Request, res: Response) => {
-    await User.findByIdAndDelete(req.userId);
+    const userId = req.userId;
+    const { password } = req.body;
 
-    responseHandler(res, 200, "User profile deleted successfully");
+    if (!userId) {
+      responseHandler(res, 401, "Unauthorized");
+      return;
+    }
+    if (!password || typeof password !== "string") {
+      responseHandler(res, 400, "Password is required to delete account");
+      return;
+    }
+
+    // Helper performing cascade with optional session
+    const cascadeDelete = async (user: any, session?: mongoose.ClientSession) => {
+      const isAdmin = Array.isArray(user.roles) && user.roles.includes("Admin");
+      let deletedTeamsCount = 0;
+      let deletedMembersCount = 0;
+
+      if (isAdmin) {
+        const teamQuery = Team.find({ createdBy: user._id }).select("_id members").lean();
+        const teams = session ? await teamQuery.session(session) : await teamQuery;
+        if (teams.length > 0) {
+          const teamIds = teams.map((t: any) => t._id);
+          const memberUserIds: string[] = [];
+            teams.forEach((t: any) => {
+            (t.members || []).forEach((m: any) => { if (m.user) memberUserIds.push(m.user.toString()); });
+          });
+          if (memberUserIds.length > 0 || teamIds.length > 0) {
+            const orFilters: any[] = [];
+            if (memberUserIds.length > 0) orFilters.push({ _id: { $in: memberUserIds } });
+            if (teamIds.length > 0) orFilters.push({ teamId: { $in: teamIds } });
+            const baseFilter: any = { _id: { $ne: user._id } };
+            if (orFilters.length > 0) baseFilter.$or = orFilters;
+            const userDeleteExec = User.deleteMany(baseFilter);
+            const userDeleteResult = session ? await userDeleteExec.session(session) : await userDeleteExec;
+            deletedMembersCount = userDeleteResult.deletedCount || 0;
+          }
+          const teamDeleteExec = Team.deleteMany({ _id: { $in: teamIds } });
+          const teamDeleteResult = session ? await teamDeleteExec.session(session) : await teamDeleteExec;
+          deletedTeamsCount = teamDeleteResult.deletedCount || 0;
+        }
+        const clientDeleteExec = Client.deleteMany({ $or: [ { userId: user._id }, { clientEmail: user.email } ] });
+        if (session) await clientDeleteExec.session(session); else await clientDeleteExec;
+
+        const adminObjectId = user._id;
+        const collections = [
+          { path: "../schemas/BuyOrder", filter: { userId: adminObjectId } },
+          { path: "../schemas/SellOrder", filter: { userId: adminObjectId } },
+          { path: "../schemas/Order", filter: { userId: adminObjectId } },
+          { path: "../schemas/OrderPayment", filter: { createdBy: adminObjectId } },
+          { path: "../schemas/SellOrderPayment", filter: { createdBy: adminObjectId } },
+          { path: "../schemas/CreditNote", filter: { userId: adminObjectId } },
+          { path: "../schemas/Cashiering", filter: { userId: adminObjectId } },
+          { path: "../schemas/Cart", filter: { userId: adminObjectId } },
+          { path: "../schemas/Inventory", filter: { userId: adminObjectId } },
+          { path: "../schemas/Logistic", filter: { userId: adminObjectId } },
+          { path: "../schemas/MyClient", filter: { userId: adminObjectId.toString() } },
+          { path: "../schemas/ReportedIssue", filter: { userId: adminObjectId } },
+        ];
+        for (const c of collections) {
+          try {
+            const mod: any = await import(c.path);
+            const exec = mod.default.deleteMany(c.filter);
+            if (session) await exec.session(session); else await exec;
+          } catch (e) {
+            console.warn("Cascade deletion skip (import failed)", c.path, e instanceof Error ? e.message : e);
+          }
+        }
+      } else {
+        const teamUpdateExec = Team.updateMany({ "members.email": user.email }, { $pull: { members: { email: user.email } } });
+        if (session) await teamUpdateExec.session(session); else await teamUpdateExec;
+        const clientDeleteExec = Client.deleteMany({ $or: [ { userId: user._id }, { clientEmail: user.email } ] });
+        if (session) await clientDeleteExec.session(session); else await clientDeleteExec;
+        const memberObjId = user._id;
+        const memberCollections = [
+          { path: "../schemas/Cart", filter: { userId: memberObjId } },
+          { path: "../schemas/Cashiering", filter: { userId: memberObjId } },
+          { path: "../schemas/BuyOrder", filter: { userId: memberObjId } },
+          { path: "../schemas/SellOrder", filter: { userId: memberObjId } },
+          { path: "../schemas/Order", filter: { userId: memberObjId } },
+          { path: "../schemas/CreditNote", filter: { userId: memberObjId } },
+          { path: "../schemas/Inventory", filter: { userId: memberObjId } },
+          { path: "../schemas/Logistic", filter: { userId: memberObjId } },
+          { path: "../schemas/ReportedIssue", filter: { userId: memberObjId } },
+        ];
+        for (const c of memberCollections) {
+          try {
+            const mod: any = await import(c.path);
+            const exec = mod.default.deleteMany(c.filter);
+            if (session) await exec.session(session); else await exec;
+          } catch (e) {
+            console.warn("Member cascade deletion skip (import failed)", c.path, e instanceof Error ? e.message : e);
+          }
+        }
+      }
+
+      const userDeleteExec = User.deleteOne({ _id: user._id });
+      if (session) await userDeleteExec.session(session); else await userDeleteExec;
+      return { isAdmin, deletedTeamsCount, deletedMembersCount };
+    };
+
+    let session: mongoose.ClientSession | undefined;
+    let usedTransaction = false;
+    try {
+      session = await mongoose.startSession();
+      try {
+        session.startTransaction();
+        usedTransaction = true;
+      } catch (txErr: any) {
+        console.warn("Transactions not supported, falling back to non-transactional deletion:", txErr?.message);
+      }
+
+      const userQuery = User.findById(userId);
+      const user = usedTransaction ? await userQuery.session(session) : await userQuery;
+      if (!user) {
+        if (usedTransaction) await session!.abortTransaction();
+        responseHandler(res, 404, "User not found");
+        return;
+      }
+      const passwordOk = await user.isPasswordCorrect(password);
+      if (!passwordOk) {
+        if (usedTransaction) await session!.abortTransaction();
+        responseHandler(res, 401, "Invalid password");
+        return;
+      }
+
+      const result = await cascadeDelete(user, usedTransaction ? session : undefined);
+      if (usedTransaction) await session!.commitTransaction();
+
+      responseHandler(res, 200, "User profile deleted successfully", "success", {
+        deletedTeams: result.deletedTeamsCount,
+        deletedAssociatedUsers: result.deletedMembersCount,
+        accountType: result.isAdmin ? "admin" : "member",
+        transactional: usedTransaction,
+      });
+    } catch (err) {
+      if (usedTransaction && session) {
+        try { await session.abortTransaction(); } catch {}
+      }
+      console.error("deleteUserProfile - Error:", err);
+      responseHandler(res, 500, "Internal server error during account deletion");
+    } finally {
+      if (session) await session.endSession();
+    }
   }
 );
 

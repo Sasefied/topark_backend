@@ -20,7 +20,7 @@ export interface IClient extends Document {
     amount: number;
     period: number;
   };
-  preference: "Client" | "Supplier";
+  preference: "Client" | "Supplier" | "Both";
   supplier?: {
     creditLimitAmount: number;
     creditLimitDays: number;
@@ -74,7 +74,7 @@ const clientSchema = new Schema<IClient>(
     },
     preference: {
       type: String,
-      enum: ["Client", "Supplier"],
+      enum: ["Client", "Supplier", "Both"],
       required: true,
       default: "Client",
     },

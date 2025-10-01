@@ -4,21 +4,148 @@ import User from "../schemas/User";
 import MyClient from "../schemas/MyClient";
 import { responseHandler } from "../utils/responseHandler";
 import sendEmail from "../utils/mail";
-import { Types } from "mongoose";
+import { ClientSession, ObjectId, Types } from "mongoose";
 import mongoose from "mongoose";
+import Inventory, { IInventory } from "../schemas/Inventory";
+import { AdminProduct } from "../schemas/AdminProduct";
+import { BadRequestError } from "../utils/errors";
 
 const excludeId = (doc: any) => {
   const { _id, ...rest } = doc.toObject();
   return rest;
 };
 
+// Constants for validation
+const VALID_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const VALID_SELL_BY_TYPES = [
+  "Box",
+  "Kg",
+  "Unit",
+  "Dozen",
+  "Liter",
+  "Packet",
+  "Gram",
+  "Pound",
+  "Ounce",
+  "Milliliter",
+];
+const VALID_CREDIT_PERIODS = [0, 1, 7, 14, 30, 60, 90];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Reusable validation functions
+const validateEmail = (email: string | undefined): boolean =>
+  !!email && EMAIL_REGEX.test(email.trim());
+
+const validateCreditPeriod = (period: any): boolean =>
+  period !== undefined && VALID_CREDIT_PERIODS.includes(Number(period));
+
+const addStockOnInventory = async (
+  userId: string,
+  product: IInventory,
+  session: ClientSession,
+  clientId?: String
+) => {
+  const {
+    adminProductId,
+    size,
+    color,
+    vat,
+    sellBy,
+    sellByQuantity,
+    shelfLife,
+    season,
+    countryOfOrigin,
+    variety,
+  } = product;
+
+  // Validate referenced documents
+  const productExists =
+    await AdminProduct.findById(adminProductId).session(session);
+  if (!productExists) {
+    throw new BadRequestError("Product not found");
+  }
+
+  // Validate client if clientId is provided
+  if (clientId) {
+    const client = await Client.findById(clientId).session(session);
+    if (!client) {
+      throw new BadRequestError("Client not found");
+    }
+  }
+
+  // Validate season
+  if (
+    !Array.isArray(season) ||
+    !season.every((m: string) => VALID_MONTHS.includes(m))
+  ) {
+    throw new BadRequestError(
+      "Invalid season format. Must be an array of valid months."
+    );
+  }
+
+  // Validate sellBy
+  if (!VALID_SELL_BY_TYPES.includes(sellBy)) {
+    throw new BadRequestError("Invalid sellBy type");
+  }
+
+  // Validate size and color against AdminProduct
+  if (size !== productExists.size) {
+    throw new BadRequestError(
+      `Size "${size}" does not match product's size "${productExists.size}"`
+    );
+  }
+  if (color && productExists.color && color !== productExists.color) {
+    throw new BadRequestError(
+      `Color "${color}" does not match product's color "${productExists.color}"`
+    );
+  }
+
+  // Create inventory entry
+  const inventoryEntry = await Inventory.create(
+    [
+      {
+        userId,
+        clientId,
+        adminProductId,
+        size,
+        color: color || null,
+        vat: vat !== undefined ? parseFloat(vat.toString()) : undefined,
+        sellBy,
+        shelfLife,
+        season,
+        countryOfOrigin,
+        variety,
+        sellByQuantity,
+      },
+    ],
+    { session }
+  );
+
+  return inventoryEntry[0];
+};
+
 export const createClient = async (
   req: Request,
   res: Response
 ): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const {
-      clientId,
       userId,
       clientName,
       workanniversary,
@@ -38,70 +165,45 @@ export const createClient = async (
       deliveryDelayIssueEmail,
       supplierCreditLimitAmount,
       supplierCreditLimitDays,
+      products,
     } = req.body;
-
-    console.log("Request body:", req.body);
 
     // Validate required fields
     if (
-      !clientId ||
       !clientName ||
       !clientEmail?.trim() ||
       !registeredName ||
       !userId ||
       !preference
     ) {
-      responseHandler(
-        res,
-        400,
-        "Required fields: clientId, clientName, clientEmail, registeredName, userId, preference",
-        "error"
+      throw new BadRequestError(
+        "Required fields: clientName, clientEmail, registeredName, userId, preference"
       );
-      return;
     }
 
     // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(clientEmail.trim())) {
-      responseHandler(res, 400, "Invalid client email format", "error");
-      return;
-    }
-
-    // Validate clientId format
-    const clientIdRegex = /^[a-zA-Z0-9-]+$/;
-    if (!clientIdRegex.test(clientId)) {
-      responseHandler(
-        res,
-        400,
-        "Invalid clientId format. Use alphanumeric characters and hyphens only.",
-        "error"
-      );
-      return;
+    if (!validateEmail(clientEmail)) {
+      throw new BadRequestError("Invalid client email format");
     }
 
     // Validate preference
-    if (!["Client", "Supplier"].includes(preference)) {
-      responseHandler(
-        res,
-        400,
-        "Preference must be either 'Client' or 'Supplier'",
-        "error"
+    if (!["Client", "Supplier", "Both"].includes(preference)) {
+      throw new BadRequestError(
+        "Preference must be 'Client', 'Supplier', or 'Both'"
       );
-      return;
     }
+
+    const isClient = preference === "Client" || preference === "Both";
+    const isSupplier = preference === "Supplier" || preference === "Both";
 
     // Validate preference-specific fields
-    if (preference === "Client" && !deliveryAddress?.trim()) {
-      responseHandler(
-        res,
-        400,
-        "Delivery address is required for Client preference",
-        "error"
+    if (isClient && !deliveryAddress?.trim()) {
+      throw new BadRequestError(
+        "Delivery address is required for Client or Both preference"
       );
-      return;
     }
 
-    if (preference === "Supplier") {
+    if (isSupplier) {
       const supplierEmailFields = [
         invoiceEmail,
         returnToSupplierEmail,
@@ -110,16 +212,12 @@ export const createClient = async (
         deliveryDelayIssueEmail,
       ];
       const invalidEmails = supplierEmailFields.filter(
-        (email) => email && !emailRegex.test(email.trim())
+        (email) => email && !validateEmail(email)
       );
       if (invalidEmails.length > 0) {
-        responseHandler(
-          res,
-          400,
-          "One or more supplier email fields have invalid format",
-          "error"
+        throw new BadRequestError(
+          "One or more supplier email fields have invalid format"
         );
-        return;
       }
 
       if (supplierCreditLimitAmount !== undefined) {
@@ -128,30 +226,19 @@ export const createClient = async (
           isNaN(supplierCreditLimitAmount) ||
           supplierCreditLimitAmount < 0
         ) {
-          responseHandler(
-            res,
-            400,
-            "Invalid supplierCreditLimitAmount. Must be a valid non-negative number.",
-            "error"
+          throw new BadRequestError(
+            "Invalid supplierCreditLimitAmount. Must be a valid non-negative number."
           );
-          return;
         }
       }
 
-      if (supplierCreditLimitDays !== undefined) {
-        if (
-          !["0", "1", "7", "14", "30", "60", "90"].includes(
-            supplierCreditLimitDays.toString()
-          )
-        ) {
-          responseHandler(
-            res,
-            400,
-            "Supplier credit limit days must be one of: 0, 1, 7, 14, 30, 60, 90",
-            "error"
-          );
-          return;
-        }
+      if (
+        supplierCreditLimitDays !== undefined &&
+        !validateCreditPeriod(supplierCreditLimitDays)
+      ) {
+        throw new BadRequestError(
+          "Supplier credit limit days must be one of: 0, 1, 7, 14, 30, 60, 90"
+        );
       }
     }
 
@@ -162,69 +249,62 @@ export const createClient = async (
         isNaN(creditLimit.amount) ||
         creditLimit.amount < 0
       ) {
-        responseHandler(
-          res,
-          400,
-          "Invalid creditLimit.amount. Must be a valid non-negative number.",
-          "error"
+        throw new BadRequestError(
+          "Invalid creditLimit.amount. Must be a valid non-negative number."
         );
-        return;
       }
-      if (
-        creditLimit.period &&
-        !["0", "1", "7", "14", "30", "60", "90"].includes(
-          creditLimit.period.toString()
-        )
-      ) {
-        responseHandler(
-          res,
-          400,
-          "Credit limit period must be one of: 0, 1, 7, 14, 30, 60, 90",
-          "error"
+      if (creditLimit.period && !validateCreditPeriod(creditLimit.period)) {
+        throw new BadRequestError(
+          "Credit limit period must be one of: 0, 1, 7, 14, 30, 60, 90"
         );
-        return;
       }
     }
 
-    // Check for existing client
-    const existingClient = await Client.findOne({
-      $or: [{ clientId }, { clientEmail }],
-    });
-    if (existingClient) {
-      responseHandler(
-        res,
-        400,
-        existingClient.clientId === clientId
-          ? "Client ID already exists"
-          : "Client email already exists",
-        "error"
+    // Validate products array structure
+    if (
+      products &&
+      (!Array.isArray(products) ||
+        products.some((p) => !p.adminProductId || !p.sellBy))
+    ) {
+      throw new BadRequestError(
+        "Products must be an array of objects with adminProductId and sellBy"
       );
-      return;
+    }
+
+    // Generate unique clientId (e.g., CLIENT-001)
+    let clientId: string;
+    const lastClient = await Client.findOne()
+      .sort({ createdAt: -1 })
+      .session(session);
+    if (
+      lastClient &&
+      lastClient.clientId &&
+      lastClient.clientId.startsWith("CLIENT-")
+    ) {
+      const lastNumber = parseInt(
+        lastClient.clientId.replace("CLIENT-", ""),
+        10
+      );
+      clientId = `CLIENT-${String(lastNumber + 1).padStart(3, "0")}`; // Use 3 digits for scalability
+    } else {
+      clientId = "CLIENT-001"; // First client
+    }
+
+    // Check for existing client by email
+    if (await Client.findOne({ clientEmail }).session(session)) {
+      throw new BadRequestError("Client email already exists");
     }
 
     // Verify authenticated user
     const createdBy = new mongoose.Types.ObjectId(req.userId);
     if (!createdBy) {
-      responseHandler(res, 401, "Authentication required", "error");
-      return;
+      throw new BadRequestError("Authentication required");
     }
 
-    const user = await User.findById(createdBy);
+    const user = await User.findById(createdBy).session(session);
     if (!user) {
-      responseHandler(res, 400, "Invalid user", "error");
-      return;
+      throw new BadRequestError("Invalid user");
     }
-
-    // Validate userId matches createdBy
-    // if (userId !== createdBy) {
-    //   responseHandler(
-    //     res,
-    //     403,
-    //     "User ID does not match authenticated user",
-    //     "error"
-    //   );
-    //   return;
-    // }
 
     // Construct the creditLimit object
     const creditLimitData = creditLimit
@@ -252,11 +332,10 @@ export const createClient = async (
     };
 
     // Add preference-specific fields
-    if (preference === "Client") {
+    if (isClient) {
       clientData.deliveryAddress = deliveryAddress || "";
-      clientData.supplier = undefined; // Explicitly unset for Client
-    } else if (preference === "Supplier") {
-      clientData.deliveryAddress = undefined; // Explicitly unset for Supplier
+    }
+    if (isSupplier) {
       clientData.supplier = {
         creditLimitAmount: supplierCreditLimitAmount || 0,
         creditLimitDays: supplierCreditLimitDays
@@ -271,15 +350,29 @@ export const createClient = async (
     }
 
     const newClient = new Client(clientData);
-    await newClient.save();
+    await newClient.save({ session });
+
+    // Add products in parallel
+    if (Array.isArray(products) && products.length > 0) {
+      await Promise.all(
+        products.map((product: IInventory) =>
+          addStockOnInventory(
+            req.userId!,
+            product,
+            session,
+            String(newClient._id)
+          )
+        )
+      );
+    }
 
     // Prepare email content
+    const roleDescription =
+      preference === "Both" ? "client and supplier" : preference.toLowerCase();
     let html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <p>Hello <strong>${clientName}</strong>,</p>
-        <p>You have been successfully added as a ${
-          preference === "Client" ? "client" : "supplier"
-        } for <strong>${user.companyName || "our company"}</strong>.</p>
+        <p>You have been successfully added as a ${roleDescription} for <strong>${user.companyName || "our company"}</strong>.</p>
         <p><strong>Client ID:</strong> ${clientId}</p>
         <p><strong>Company Reference Number:</strong> ${companyReferenceNumber || clientId}</p>
         <p><strong>Registered Name:</strong> ${registeredName}</p>
@@ -293,11 +386,10 @@ export const createClient = async (
         }</p>
     `;
 
-    if (preference === "Client") {
-      html += `
-        <p><strong>Delivery Address:</strong> ${deliveryAddress || "Not provided"}</p>
-      `;
-    } else if (preference === "Supplier") {
+    if (isClient) {
+      html += `<p><strong>Delivery Address:</strong> ${deliveryAddress || "Not provided"}</p>`;
+    }
+    if (isSupplier) {
       html += `
         <p><strong>Supplier Credit Limit Amount:</strong> $${supplierCreditLimitAmount || 0}</p>
         <p><strong>Supplier Credit Limit Days:</strong> ${supplierCreditLimitDays ? `${supplierCreditLimitDays} days` : "Not specified"}</p>
@@ -318,13 +410,16 @@ export const createClient = async (
 
     const mailSent = await sendEmail({
       to: clientEmail,
-      subject: `Welcome! You Have Been Added as a ${preference === "Client" ? "Client" : "Supplier"}`,
+      subject: `Welcome! You Have Been Added as a ${roleDescription.charAt(0).toUpperCase() + roleDescription.slice(1)}`,
       html,
     });
 
     if (!mailSent) {
       console.warn("createClient - Failed to send email to:", clientEmail);
     }
+
+    await session.commitTransaction();
+    session.endSession();
 
     responseHandler(
       res,
@@ -334,14 +429,16 @@ export const createClient = async (
       newClient
     );
   } catch (error: any) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("createClient - Error:", {
       message: error.message,
       stack: error.stack,
       body: req.body,
       validationErrors: error.errors || null,
     });
-    if (error.name === "ValidationError") {
-      responseHandler(res, 400, `Validation error: ${error.message}`, "error");
+    if (error instanceof BadRequestError) {
+      responseHandler(res, 400, error.message, "error");
       return;
     }
     responseHandler(res, 500, "Internal server error", "error");
@@ -848,99 +945,197 @@ export const getAllClients = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = req.userId;
-
-    if (!userId) {
-      responseHandler(res, 400, "Missing userId", "error");
+    // Validate userId
+    if (!req.userId || !mongoose.Types.ObjectId.isValid(req.userId)) {
+      responseHandler(res, 400, "Invalid or missing userId", "error");
       return;
     }
 
-    const myClientDoc = await MyClient.findOne({ userId: userId.toString() });
-    const excludedClientIds = myClientDoc?.clientId || [];
+    const userId = new mongoose.Types.ObjectId(req.userId);
 
-    const clients = await Client.find({
-      _id: { $nin: excludedClientIds },
-      clientEmail: { $ne: req.userEmail },
-      userId: { $ne: null },
-    })
-      .select(
-        "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress countryName clientNotes companyReferenceNumber creditLimit preference supplier relatedClientIds createdBy createdAt updatedAt"
-      )
-      .populate(
-        "createdBy",
-        "firstName lastName companyName companyReferenceNumber"
-      );
+    // Aggregation pipeline
+    const pipeline = [
+      {
+        $match: { createdBy: new mongoose.Types.ObjectId(req.userId) }, // Ensure userId is not null
+      },
+      {
+        $lookup: {
+          from: "myclients",
+          let: { userId: userId },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$userId", "$$userId"] } } },
+            { $project: { clientId: 1 } },
+          ],
+          as: "myClient",
+        },
+      },
+      {
+        $unwind: {
+          path: "$myClient",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $match: {
+          $and: [
+            { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
+            { clientEmail: { $ne: req.userEmail } },
+            { userId: { $ne: null } },
+          ],
+        },
+      },
+      {
+        $lookup: {
+          from: "users", // Adjust collection name
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdBy",
+        },
+      },
+      {
+        $unwind: {
+          path: "$createdBy",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "inventories",
+          localField: "_id",
+          foreignField: "clientId",
+          as: "products",
+        },
+      },
+      {
+        $project: {
+          _id: { $toString: "$_id" },
+          userId: { $toString: "$userId" },
+          clientId: 1,
+          clientName: 1,
+          clientEmail: 1,
+          registeredName: 1,
+          workanniversary: {
+            $cond: [
+              { $ne: ["$workanniversary", null] },
+              { $toString: "$workanniversary" },
+              null,
+            ],
+          },
+          registeredAddress: { $ifNull: ["$registeredAddress", ""] },
+          deliveryAddress: { $ifNull: ["$deliveryAddress", ""] },
+          countryName: { $ifNull: ["$countryName", ""] },
+          clientNotes: { $ifNull: ["$clientNotes", ""] },
+          companyReferenceNumber: { $ifNull: ["$companyReferenceNumber", ""] },
+          relatedClientIds: {
+            $map: {
+              input: { $ifNull: ["$relatedClientIds", []] },
+              as: "id",
+              in: { $toString: "$$id" },
+            },
+          },
+          creditLimit: {
+            $cond: [
+              { $ne: ["$creditLimit", null] },
+              {
+                amount: { $ifNull: ["$creditLimit.amount", 0] },
+                period: { $ifNull: ["$creditLimit.period", 0] },
+              },
+              { amount: 0, period: 0 },
+            ],
+          },
+          preference: { $ifNull: ["$preference", "Client"] },
+          supplier: {
+            $cond: [
+              { $ne: ["$supplier", null] },
+              {
+                creditLimitAmount: {
+                  $ifNull: ["$supplier.creditLimitAmount", 0],
+                },
+                creditLimitDays: { $ifNull: ["$supplier.creditLimitDays", 0] },
+                invoiceEmail: { $ifNull: ["$supplier.invoiceEmail", ""] },
+                returnToSupplierEmail: {
+                  $ifNull: ["$supplier.returnToSupplierEmail", ""],
+                },
+                quantityIssueEmail: {
+                  $ifNull: ["$supplier.quantityIssueEmail", ""],
+                },
+                qualityIssueEmail: {
+                  $ifNull: ["$supplier.qualityIssueEmail", ""],
+                },
+                deliveryDelayIssueEmail: {
+                  $ifNull: ["$supplier.deliveryDelayIssueEmail", ""],
+                },
+              },
+              null,
+            ],
+          },
+          createdBy: {
+            $cond: [
+              { $ne: ["$createdBy", null] },
+              {
+                _id: { $toString: "$createdBy._id" },
+                firstName: { $ifNull: ["$createdBy.firstName", ""] },
+                lastName: { $ifNull: ["$createdBy.lastName", ""] },
+                companyName: { $ifNull: ["$createdBy.companyName", ""] },
+                companyReferenceNumber: {
+                  $ifNull: ["$createdBy.companyReferenceNumber", ""],
+                },
+              },
+              null,
+            ],
+          },
+          createdAt: {
+            $cond: [
+              { $ne: ["$createdAt", null] },
+              { $toString: "$createdAt" },
+              null,
+            ],
+          },
+          updatedAt: {
+            $cond: [
+              { $ne: ["$updatedAt", null] },
+              { $toString: "$updatedAt" },
+              null,
+            ],
+          },
+          products: {
+            $map: {
+              input: { $ifNull: ["$products", []] },
+              as: "product",
+              in: {
+                _id: { $toString: "$$product._id" },
+                adminProductId: { $toString: "$$product.adminProductId" },
+                size: "$$product.size",
+                color: { $ifNull: ["$$product.color", null] },
+                vat: { $ifNull: ["$$product.vat", null] },
+                sellBy: "$$product.sellBy",
+                sellByQuantity: { $ifNull: ["$$product.sellByQuantity", null] },
+                shelfLife: { $ifNull: ["$$product.shelfLife", null] },
+                season: { $ifNull: ["$$product.season", []] },
+                month: { $ifNull: ["$$product.month", []] },
+                countryOfOrigin: { $ifNull: ["$$product.countryOfOrigin", ""] },
+                variety: { $ifNull: ["$$product.variety", ""] },
+              },
+            },
+          },
+        },
+      },
+      {
+        $match: {
+          clientName: { $ne: null },
+          clientId: { $ne: null },
+        },
+      },
+    ];
 
-    // Validate clients and map to plain object
-    const validClients = clients
-      .filter((client) => {
-        if (!client.clientName || !client.clientId) {
-          console.warn("getAllClients - Invalid client data:", client);
-          return false;
-        }
-        return true;
-      })
-      .map((client: any) => ({
-        _id: client._id.toString(),
-        userId: client.userId?.toString() || "",
-        clientId: client.clientId,
-        clientName: client.clientName,
-        clientEmail: client.clientEmail,
-        registeredName: client.registeredName,
-        workanniversary: client.workanniversary
-          ? client.workanniversary.toISOString()
-          : null,
-        registeredAddress: client.registeredAddress || "",
-        deliveryAddress: client.deliveryAddress || "",
-        countryName: client.countryName || "",
-        clientNotes: client.clientNotes || "",
-        companyReferenceNumber: client.companyReferenceNumber || "",
-        relatedClientIds: client.relatedClientIds
-          ? client.relatedClientIds.map((id: any) => id.toString())
-          : [],
-        creditLimit: client.creditLimit
-          ? {
-              amount: client.creditLimit.amount || 0,
-              period: client.creditLimit.period || 0,
-            }
-          : { amount: 0, period: 0 },
-        preference: client.preference || "Client",
-        supplier: client.supplier
-          ? {
-              creditLimitAmount: client.supplier.creditLimitAmount || 0,
-              creditLimitDays: client.supplier.creditLimitDays || 0,
-              invoiceEmail: client.supplier.invoiceEmail || "",
-              returnToSupplierEmail:
-                client.supplier.returnToSupplierEmail || "",
-              quantityIssueEmail: client.supplier.quantityIssueEmail || "",
-              qualityIssueEmail: client.supplier.qualityIssueEmail || "",
-              deliveryDelayIssueEmail:
-                client.supplier.deliveryDelayIssueEmail || "",
-            }
-          : undefined,
-        createdBy: client.createdBy
-          ? {
-              _id: client.createdBy._id?.toString() || "",
-              firstName: client.createdBy.firstName || "",
-              lastName: client.createdBy.lastName || "",
-              companyName: client.createdBy.companyName || "",
-              companyReferenceNumber:
-                client.createdBy.companyReferenceNumber || "",
-            }
-          : null,
-        createdAt: client.createdAt
-          ? client.createdAt.toISOString()
-          : undefined,
-        updatedAt: client.updatedAt
-          ? client.updatedAt.toISOString()
-          : undefined,
-      }));
+    // Execute aggregation
+    const clients = await Client.aggregate(pipeline);
 
-    const count = validClients.length;
+    const count = clients.length;
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
       count,
-      validClients,
+      clients,
     });
   } catch (error: any) {
     console.error("getAllClients - Error:", {
@@ -1613,36 +1808,221 @@ export const deleteClient = async (
   req: Request,
   res: Response
 ): Promise<void> => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const userId = req.userId;
+    const { userId } = req;
     const { clientId } = req.body;
 
-    if (!userId || !clientId) {
-      responseHandler(res, 400, "Missing userId or clientId", "error");
-      return;
+    // Validate inputs
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid or missing userId");
+    }
+    if (
+      !clientId ||
+      typeof clientId !== "string" ||
+      !clientId.startsWith("CLIENT-")
+    ) {
+      throw new Error(
+        "Invalid or missing clientId; must be a string starting with 'CLIENT-'"
+      );
     }
 
-    if (!Types.ObjectId.isValid(clientId)) {
-      responseHandler(res, 400, "Invalid clientId format", "error");
-      return;
+    // Find the client by clientId
+    const client = await Client.findOne({ clientId }).session(session);
+    if (!client) {
+      throw new Error("Client not found");
     }
 
-    const updateResult = await MyClient.findOneAndUpdate(
+    const clientObjectId = client._id;
+
+    // Delete associated inventory products
+    const deleteInventoryResult = await Inventory.deleteMany({
+      clientId: clientObjectId,
+    }).session(session);
+
+    // Delete the client from Client collection
+    const deleteClientResult = await Client.deleteOne({
+      _id: clientObjectId,
+    }).session(session);
+
+    if (deleteClientResult.deletedCount === 0) {
+      throw new Error("Failed to delete client");
+    }
+
+    // Remove client from MyClient.clientId array
+    const updateMyClientResult = await MyClient.findOneAndUpdate(
       { userId: userId.toString() },
-      { $pull: { clientId: new Types.ObjectId(clientId) } },
-      { new: true }
-    ).populate("clientId");
+      { $pull: { clientId: clientObjectId } },
+      { new: true, session }
+    );
 
-    if (!updateResult) {
-      responseHandler(res, 404, "User or client not found", "error");
+    if (!updateMyClientResult) {
+      throw new Error("User or MyClient document not found");
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    responseHandler(
+      res,
+      200,
+      "Client and associated products removed successfully",
+      "success",
+      {
+        deletedClientId: clientId,
+        deletedProductCount: deleteInventoryResult.deletedCount,
+        updatedMyClient: {
+          userId: updateMyClientResult.userId,
+          remainingClientIds: updateMyClientResult.clientId.map((id: any) =>
+            id.toString()
+          ),
+          count: updateMyClientResult.clientId.length,
+        },
+      }
+    );
+  } catch (error: any) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("deleteClient - Error:", {
+      message: error.message,
+      stack: error.stack,
+      userId: req.userId,
+      clientId: req.body.clientId,
+    });
+    responseHandler(
+      res,
+      error.message.includes("not found") ? 404 : 400,
+      error.message,
+      "error"
+    );
+  }
+};
+
+export const getProductByClientId = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId } = req;
+    const { clientId } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    console.log(clientId);
+    // Validate inputs
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      responseHandler(res, 400, "Invalid or missing userId", "error");
+      return;
+    }
+    if (!clientId || !Types.ObjectId.isValid(clientId as string)) {
+      responseHandler(
+        res,
+        400,
+        "Invalid or missing clientId; must be a valid ObjectId",
+        "error"
+      );
       return;
     }
 
-    responseHandler(res, 200, "Client removed successfully", "success", {
-      updatedClients: updateResult.clientId,
-      count: updateResult.clientId.length,
-    });
+    // Convert clientId to ObjectId
+    const clientObjectId = new Types.ObjectId(clientId as string);
+
+    // Verify client exists
+    const client = await Client.findById(clientObjectId).select("_id").lean();
+    if (!client) {
+      responseHandler(res, 404, "Client not found", "error");
+      return;
+    }
+
+    // Aggregation pipeline
+    const pipeline = [
+      {
+        $match: {
+          clientId: clientObjectId,
+        },
+      },
+      {
+        $lookup: {
+          from: "adminproducts",
+          localField: "adminProductId",
+          foreignField: "_id",
+          as: "adminProduct",
+        },
+      },
+      {
+        $unwind: {
+          path: "$adminProduct",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          _id: { $toString: "$_id" },
+          adminProductId: { $toString: "$adminProductId" },
+          adminProductName: { $ifNull: ["$adminProduct.name", null] },
+          size: 1,
+          color: { $ifNull: ["$color", null] },
+          vat: { $ifNull: ["$vat", null] },
+          sellBy: 1,
+          sellByQuantity: { $ifNull: ["$sellByQuantity", null] },
+          shelfLife: { $ifNull: ["$shelfLife", null] },
+          season: { $ifNull: ["$season", []] },
+          month: { $ifNull: ["$month", []] },
+          countryOfOrigin: { $ifNull: ["$countryOfOrigin", ""] },
+          variety: { $ifNull: ["$variety", ""] },
+          createdAt: {
+            $cond: [
+              { $ne: ["$createdAt", null] },
+              { $toString: "$createdAt" },
+              null,
+            ],
+          },
+          updatedAt: {
+            $cond: [
+              { $ne: ["$updatedAt", null] },
+              { $toString: "$updatedAt" },
+              null,
+            ],
+          },
+        },
+      },
+    ];
+
+    const options = {
+      page,
+      limit,
+      sort: { createdAt: -1 },
+      customLabels: {
+        docs: "products",
+        totalDocs: "totalProducts",
+      },
+    };
+
+    const result = await (Inventory as any).aggregatePaginate(
+      pipeline,
+      options
+    );
+
+    responseHandler(
+      res,
+      200,
+      "Products fetched successfully",
+      "success",
+      result
+    );
   } catch (error: any) {
-    responseHandler(res, 500, "Internal server error", "error");
+    console.error("getProductByClientId - Error:", {
+      message: error.message,
+      stack: error.stack,
+      userId: req.userId,
+      clientId: req.query.clientId,
+    });
+    responseHandler(
+      res,
+      error.message.includes("not found") ? 404 : 500,
+      error.message || "Internal server error",
+      "error"
+    );
   }
 };

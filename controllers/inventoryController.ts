@@ -161,7 +161,7 @@ const getAllInventories: RequestHandler = async (req, res) => {
 //     //   );
 //     // }
 //     //  else {
-      
+
 //     // }
 //     await Inventory.create({
 //         userId: req.userId,
@@ -373,8 +373,6 @@ const updateTradingPrice = asyncHandler(async (req: Request, res: Response) => {
   responseHandler(res, 200, "Trading price updated successfully", "success");
 });
 
-
-
 const addStockOnInventory: RequestHandler = async (req, res) => {
   try {
     const {
@@ -389,6 +387,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       season,
       month,
       countryOfOrigin,
+      variety,
     } = req.body;
 
     // Validate ObjectId fields
@@ -416,45 +415,100 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
 
     // Validate season
     const validMonths = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December",
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
-    if (!Array.isArray(season) || !season.every((m: string) => validMonths.includes(m))) {
-      return res.status(400).json({ message: "Invalid season format. Must be an array of valid months." });
+    if (
+      !Array.isArray(season) ||
+      !season.every((m: string) => validMonths.includes(m))
+    ) {
+      return res
+        .status(400)
+        .json({
+          message: "Invalid season format. Must be an array of valid months.",
+        });
     }
 
     // Validate month
-    if (!Array.isArray(month) || month.length === 0 || !month.every((m: string) => validMonths.includes(m))) {
-      return res.status(400).json({ message: "Invalid month format. Must be a non-empty array of valid months." });
+    if (
+      !Array.isArray(month) ||
+      month.length === 0 ||
+      !month.every((m: string) => validMonths.includes(m))
+    ) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "Invalid month format. Must be a non-empty array of valid months.",
+        });
     }
 
     // Validate sellBy
     const validSellByTypes = [
-      "Box", "Kg", "Unit", "Dozen", "Liter", "Packet", "Gram", "Pound", "Ounce", "Milliliter",
+      "Box",
+      "Kg",
+      "Unit",
+      "Dozen",
+      "Liter",
+      "Packet",
+      "Gram",
+      "Pound",
+      "Ounce",
+      "Milliliter",
     ];
     if (!validSellByTypes.includes(sellBy)) {
-      return res.status(400).json({ message: `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}` });
+      return res
+        .status(400)
+        .json({
+          message: `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}`,
+        });
     }
 
     // Validate boxSize based on sellBy
     if (sellBy === "Box" && (!boxSize || typeof boxSize !== "string")) {
-      return res.status(400).json({ message: "Box size is required when sellBy is 'Box'" });
+      return res
+        .status(400)
+        .json({ message: "Box size is required when sellBy is 'Box'" });
     }
     if (sellBy !== "Box" && boxSize) {
-      return res.status(400).json({ message: "Box size should not be provided when sellBy is not 'Box'" });
+      return res
+        .status(400)
+        .json({
+          message: "Box size should not be provided when sellBy is not 'Box'",
+        });
     }
 
     // Validate size and color against AdminProduct
     if (size !== product.size) {
-      return res.status(400).json({ message: `Size "${size}" does not match product's size "${product.size}"` });
+      return res
+        .status(400)
+        .json({
+          message: `Size "${size}" does not match product's size "${product.size}"`,
+        });
     }
     if (color && product.color && color !== product.color) {
-      return res.status(400).json({ message: `Color "${color}" does not match product's color "${product.color}"` });
+      return res
+        .status(400)
+        .json({
+          message: `Color "${color}" does not match product's color "${product.color}"`,
+        });
     }
 
     // Validate vat
     if (isNaN(parseFloat(vat)) || parseFloat(vat) < 0) {
-      return res.status(400).json({ message: "VAT must be a non-negative number" });
+      return res
+        .status(400)
+        .json({ message: "VAT must be a non-negative number" });
     }
 
     // Create inventory entry
@@ -471,6 +525,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       season,
       month,
       countryOfOrigin,
+      variety,
     });
 
     // Update client's inventoryIds if clientId is provided
@@ -482,16 +537,24 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       );
     }
 
-    return res.status(201).json({ message: "Stock added to inventory and associated with client successfully", inventory: inventoryEntry });
+    return res
+      .status(201)
+      .json({
+        message:
+          "Stock added to inventory and associated with client successfully",
+        inventory: inventoryEntry,
+      });
   } catch (error: any) {
-    console.error("Error adding stock to inventory:", error.message, error.stack);
-    return res.status(400).json({ message: error.message || "Error adding stock to inventory" });
+    console.error(
+      "Error adding stock to inventory:",
+      error.message,
+      error.stack
+    );
+    return res
+      .status(400)
+      .json({ message: error.message || "Error adding stock to inventory" });
   }
 };
-
-
-
-
 
 export {
   getAllInventories,

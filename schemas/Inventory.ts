@@ -44,16 +44,16 @@
 //       required: true,
 //       default: 0,
 //     },
-    // qtyInStock: {
-    //   type: Number,
-    //   required: true,
-    //   default: 0,
-    // },
-    // qtyIncoming: {
-    //   type: Number,
-    //   required: true,
-    //   default: 0,
-    // },
+// qtyInStock: {
+//   type: Number,
+//   required: true,
+//   default: 0,
+// },
+// qtyIncoming: {
+//   type: Number,
+//   required: true,
+//   default: 0,
+// },
 //     sourceCountry: {
 //       type: String,
 //       required: true,
@@ -84,7 +84,6 @@
 
 // export default Inventory;
 
-
 import mongoose, { Document, Schema, Model } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
@@ -96,15 +95,24 @@ export interface IInventory extends Document {
   size: string;
   color?: string | null;
   vat?: number;
-  sellBy: "Box" | "Kg" | "Unit" | "Dozen" | "Liter" | "Packet" | "Gram" | "Pound" | "Ounce" | "Milliliter";
-  sellByQuantity:string;
-  boxSize?: string;
+  sellBy:
+    | "Box"
+    | "Kg"
+    | "Unit"
+    | "Dozen"
+    | "Liter"
+    | "Packet"
+    | "Gram"
+    | "Pound"
+    | "Ounce"
+    | "Milliliter";
+  sellByQuantity: string;
   shelfLife: number;
   season: string[];
-  month: string[];
- countryOfOrigin: string;
+  countryOfOrigin: string;
   qtyInStock: number;
   qtyIncoming: number;
+  variety?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -160,14 +168,8 @@ const inventorySchema: Schema<IInventory> = new Schema(
       ],
       required: true,
     },
-    sellByQuantity:{ type:String, required:false, default: "" },
-    boxSize: {
-      type: String,
-      required: function (this: IInventory) {
-        return this.sellBy === "Box";
-      },
-      trim: true,
-    },
+    sellByQuantity: { type: String, required: false, default: "" },
+    
     shelfLife: {
       type: Number,
       required: true,
@@ -193,27 +195,8 @@ const inventorySchema: Schema<IInventory> = new Schema(
         required: true,
       },
     ],
-    month: [
-      {
-        type: String,
-        enum: [
-          "January",
-          "February",
-          "March",
-          "April",
-          "May",
-          "June",
-          "July",
-          "August",
-          "September",
-          "October",
-          "November",
-          "December",
-        ],
-        required: true,
-      },
-    ],
-   countryOfOrigin: {
+  
+    countryOfOrigin: {
       type: String,
       required: true,
       uppercase: true,
@@ -229,6 +212,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
       required: true,
       default: 0,
     },
+    variety: { type: String, required: false, default: null },
   },
   { timestamps: true }
 );
