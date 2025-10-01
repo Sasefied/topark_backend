@@ -754,6 +754,7 @@ export const getUserProfile = asyncHandler(
           _id: 1,
           email: 1,
           firstName: 1,
+           roles: 1,
           // lastName: 1,
           companyName: 1,
 
