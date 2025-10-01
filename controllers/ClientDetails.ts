@@ -955,6 +955,9 @@ export const getAllClients = async (
     // Aggregation pipeline
     const pipeline = [
       {
+        $match: { createdBy: new mongoose.Types.ObjectId(req.userId) }, // Ensure userId is not null
+      },
+      {
         $lookup: {
           from: "myclients",
           let: { userId: userId },
@@ -971,15 +974,15 @@ export const getAllClients = async (
           preserveNullAndEmptyArrays: true,
         },
       },
-      // {
-      //   $match: {
-      //     $and: [
-      //       { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
-      //       { clientEmail: { $ne: req.userEmail } },
-      //       { userId: { $ne: null } },
-      //     ],
-      //   },
-      // },
+      {
+        $match: {
+          $and: [
+            { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
+            { clientEmail: { $ne: req.userEmail } },
+            { userId: { $ne: null } },
+          ],
+        },
+      },
       {
         $lookup: {
           from: "users", // Adjust collection name
@@ -1905,7 +1908,7 @@ export const getProductByClientId = async (
     const { clientId } = req.params;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-
+ console.log(clientId)
     // Validate inputs
     if (!userId || !Types.ObjectId.isValid(userId)) {
       responseHandler(res, 400, "Invalid or missing userId", "error");
