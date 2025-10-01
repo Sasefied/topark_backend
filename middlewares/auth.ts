@@ -1,9 +1,8 @@
-
-
 import { Request, Response, NextFunction } from "express";
 import { UnauthorizedError } from "../utils/errors";
 import tokenUtil from "../utils/token";
 import User from "../schemas/User";
+import mongoose from "mongoose";
 
 // Extend Express Request type to include userEmail and orgId
 declare module "express-serve-static-core" {
@@ -12,6 +11,7 @@ declare module "express-serve-static-core" {
     userEmail?: string;
     userOrgId?: string;
     userRoles?: string[];
+    userTeamId?: mongoose.Types.ObjectId;
   }
 }
 
@@ -26,7 +26,9 @@ const authMiddleware = async (
   const authToken = authHeader?.split(" ")[1];
 
   if (!authToken) {
-    console.log("authMiddleware - No Bearer token found in Authorization header.");
+    console.log(
+      "authMiddleware - No Bearer token found in Authorization header."
+    );
     throw new UnauthorizedError("Authentication token is required");
   }
 
@@ -59,12 +61,14 @@ const authMiddleware = async (
     req.userId = user._id.toString();
     req.userEmail = user.email;
     req.userOrgId = user.teamId?.toString();
-  req.userRoles = user.roles || [];
+    req.userRoles = user.roles || [];
+    req.userTeamId = user.teamId;
     console.log("authMiddleware - Authenticated user:", {
       userId: req.userId,
       userEmail: req.userEmail,
       userOrgId: req.userOrgId,
       userRoles: req.userRoles,
+      userTeamId: req.userTeamId,
     });
 
     next();
