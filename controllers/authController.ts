@@ -280,6 +280,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         clientName: `${firstName} ${lastName}`.trim(),
         registeredName: companyName,
         clientEmail: normalizedEmail,
+        companyReferenceNumber
       });
       await newClient.save();
     }

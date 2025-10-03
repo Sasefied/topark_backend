@@ -1520,10 +1520,17 @@ export const updateClient = async (
     const { clientId } = req.params;
     const updatedClientData: Partial<IClient> = req.body;
 
-    console.log("updateClient - Request params and body:", { clientId, updatedClientData });
+    console.log("updateClient - Request params and body:", {
+      clientId,
+      updatedClientData,
+    });
 
     // Validate clientId
-    if (!clientId || typeof clientId !== "string" || !clientId.startsWith("CLIENT-")) {
+    if (
+      !clientId ||
+      typeof clientId !== "string" ||
+      !clientId.startsWith("CLIENT-")
+    ) {
       responseHandler(
         res,
         400,
@@ -1578,7 +1585,9 @@ export const updateClient = async (
       }
       if (
         updatedClientData.creditLimit.period !== undefined &&
-        !VALID_CREDIT_PERIODS.includes(Number(updatedClientData.creditLimit.period))
+        !VALID_CREDIT_PERIODS.includes(
+          Number(updatedClientData.creditLimit.period)
+        )
       ) {
         responseHandler(
           res,
@@ -1606,7 +1615,11 @@ export const updateClient = async (
       return;
     }
 
-    if (updatedClientData.supplier && finalPreference !== "Supplier" && finalPreference !== "Both") {
+    if (
+      updatedClientData.supplier &&
+      finalPreference !== "Supplier" &&
+      finalPreference !== "Both"
+    ) {
       responseHandler(
         res,
         400,
@@ -1616,7 +1629,11 @@ export const updateClient = async (
       return;
     }
 
-    if (updatedClientData.deliveryAddress && finalPreference !== "Client" && finalPreference !== "Both") {
+    if (
+      updatedClientData.deliveryAddress &&
+      finalPreference !== "Client" &&
+      finalPreference !== "Both"
+    ) {
       responseHandler(
         res,
         400,
@@ -1787,7 +1804,7 @@ export const deleteClient = async (
     const { clientId } = req.body;
 
     // Validate inputs
-    if (!userId || !Types.ObjectId.isValid(userId)) {
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       throw new Error("Invalid or missing userId");
     }
     if (
@@ -1800,32 +1817,44 @@ export const deleteClient = async (
       );
     }
 
-    // Find the client by clientId
-    const client = await Client.findOne({ clientId }).session(session);
+    // Find the client by clientId and userId to ensure it belongs to the user
+    const client = await Client.findOne({
+      clientId,
+      userId: new mongoose.Types.ObjectId(userId),
+    }).session(session);
     if (!client) {
-      throw new Error("Client not found");
+      throw new Error("Client not found or does not belong to the user");
     }
 
     const clientObjectId = client._id;
 
     // Delete associated inventory products
-    const deleteInventoryResult = await Inventory.deleteMany({
+    await Inventory.deleteMany({
       clientId: clientObjectId,
     }).session(session);
 
     // Delete the client from Client collection
     const deleteClientResult = await Client.deleteOne({
       _id: clientObjectId,
+      userId: new mongoose.Types.ObjectId(userId),
     }).session(session);
 
     if (deleteClientResult.deletedCount === 0) {
       throw new Error("Failed to delete client");
     }
 
-    // Remove client from MyClient.clientId array
+    // Remove client from MyClient.clientId array and MyClient.client array (matching both userId and clientId)
     const updateMyClientResult = await MyClient.findOneAndUpdate(
       { userId: userId.toString() },
-      { $pull: { clientId: clientObjectId } },
+      {
+        $pull: {
+          clientId: clientObjectId,
+          client: {
+            userId: client.userId,
+            clientId: clientObjectId,
+          },
+        },
+      },
       { new: true, session }
     );
 
@@ -1840,18 +1869,7 @@ export const deleteClient = async (
       res,
       200,
       "Client and associated products removed successfully",
-      "success",
-      {
-        deletedClientId: clientId,
-        deletedProductCount: deleteInventoryResult.deletedCount,
-        updatedMyClient: {
-          userId: updateMyClientResult.userId,
-          remainingClientIds: updateMyClientResult.clientId.map((id: any) =>
-            id.toString()
-          ),
-          count: updateMyClientResult.clientId.length,
-        },
-      }
+      "success"
     );
   } catch (error: any) {
     await session.abortTransaction();
@@ -1998,7 +2016,6 @@ export const deleteClient = async (
 //   }
 // };
 
-
 export const getProductByClientId = async (
   req: Request,
   res: Response
@@ -2014,7 +2031,11 @@ export const getProductByClientId = async (
       responseHandler(res, 400, "Invalid or missing userId", "error");
       return;
     }
-    if (!clientId || typeof clientId !== "string" || !clientId.startsWith("CLIENT-")) {
+    if (
+      !clientId ||
+      typeof clientId !== "string" ||
+      !clientId.startsWith("CLIENT-")
+    ) {
       responseHandler(
         res,
         400,
@@ -2097,7 +2118,10 @@ export const getProductByClientId = async (
       },
     };
 
-    const result = await (Inventory as any).aggregatePaginate(pipeline, options);
+    const result = await (Inventory as any).aggregatePaginate(
+      pipeline,
+      options
+    );
 
     responseHandler(
       res,
