@@ -16,6 +16,7 @@ export interface IUser extends Document {
   status?: "pending" | "active" | "inactive";
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
+  isOfflineUser?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
   createPasswordResetToken: () => string;
@@ -27,10 +28,12 @@ const userSchema: Schema<IUser> = new Schema(
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
-    companyEmail: {type: String, unique: true},
+  // companyEmail can be optional; remove direct unique here and create a sparse unique index below
+  companyEmail: { type: String },
     password: { type: String, required: true },
     companyName: { type: String, required: false },
-    companyReferenceNumber: { type: String, required: false, unique: true },
+  // companyReferenceNumber optional; enforce uniqueness only when present via sparse index
+  companyReferenceNumber: { type: String, required: false },
    
     consentGiven: { type: Boolean, required: true, default: false },
     roles: [
@@ -43,6 +46,7 @@ const userSchema: Schema<IUser> = new Schema(
     teamId: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
+    isOfflineUser: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
@@ -64,4 +68,8 @@ userSchema.methods.isPasswordCorrect = async function(password: string): Promise
 }
 
 const User = mongoose.model<IUser>("User", userSchema);
+// Sparse unique indexes so multiple null / missing values don't collide
+userSchema.index({ companyEmail: 1 }, { unique: true, sparse: true });
+userSchema.index({ companyReferenceNumber: 1 }, { unique: true, sparse: true });
+
 export default User;

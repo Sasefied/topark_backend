@@ -23,7 +23,6 @@ interface TeamMemberInput {
 
 // STEP 1: Save Team Name
 
-
 export const saveTeamName = async (
   req: Request,
   res: Response
@@ -62,8 +61,6 @@ export const saveTeamName = async (
         responseHandler(res, 404, "Team not found.");
         return;
       }
-
-
 
       team.teamName = teamName.trim(); // Store original case in database
       savedTeam = await team.save();
@@ -172,7 +169,10 @@ export const updatePrimaryUsage = async (
       { primaryUsage },
       { new: true, runValidators: true }
     );
-    console.log("updatePrimaryUsage - Updated team:", JSON.stringify(team, null, 2));
+    console.log(
+      "updatePrimaryUsage - Updated team:",
+      JSON.stringify(team, null, 2)
+    );
 
     if (!team) {
       console.log("updatePrimaryUsage - Error: Team not found or unauthorized");
@@ -204,10 +204,168 @@ export const updatePrimaryUsage = async (
 };
 // STEP 3: Add Team Members & Send Invite Email
 
+// export const addTeamMembers = async (req: Request, res: Response) => {
+//   const userId = req.userId;
+//   const { teamId, members } = req.body;
+//   console.log("add", req.body);
+//   const validRoles: TeamRoles[] = [
+//     "Admin",
+//     "Buyer",
+//     "Seller",
+//     "Cashier",
+//     "Accountant",
+//     "Operations",
+//     "StockMan",
+//   ];
+
+//   try {
+//     // Validate members payload
+//     if (!teamId || typeof teamId !== "string") {
+//       return responseHandler(res, 400, "Team ID is required");
+//     }
+//     if (!Array.isArray(members) || members.length === 0) {
+//       return responseHandler(res, 400, "Members list is required");
+//     }
+
+//     for (const member of members as TeamMemberInput[]) {
+//       if (
+//         !member.email ||
+//         !Array.isArray(member.roles) ||
+//         member.roles.length === 0
+//       ) {
+//         return responseHandler(
+//           res,
+//           400,
+//           "Each member must have an email and at least one role"
+//         );
+//       }
+//       for (const role of member.roles) {
+//         if (!validRoles.includes(role)) {
+//           return responseHandler(res, 400, `Invalid role: ${role}`);
+//         }
+//       }
+//     }
+
+//     // Find team by teamId and ensure it belongs to the user
+//     const team = await Team.findOne({ _id: teamId, createdBy: userId });
+//     if (!team) {
+//       return responseHandler(
+//         res,
+//         404,
+//         "Team not found or you are not authorized"
+//       );
+//     }
+
+//     if (!req.userEmail) {
+//       return responseHandler(
+//         res,
+//         400,
+//         "User email is missing from request context"
+//       );
+//     }
+
+//     for (const member of members) {
+//       const existingMember = team.members?.find(
+//         (m) => m.email === member.email
+//       );
+
+//       const existingUser = await User.findOne({ email: member.email });
+
+//       if (existingMember) {
+//         const currentRoles = existingMember.roles as string[];
+//         const newRoles = member.roles.filter(
+//           (role: string) => !currentRoles.includes(role)
+//         );
+//         existingMember.roles = [...currentRoles, ...newRoles];
+//       } else {
+//         const newMember: any = {
+//           email: member.email,
+//           roles: member.roles,
+//           status: "pending",
+//           teamId: team._id,
+//         };
+
+//         if (existingUser) {
+//           newMember.user = existingUser._id;
+//           if (
+//             !existingUser.teamId ||
+//             existingUser.teamId.toString() !== teamId
+//           ) {
+//             existingUser.teamId = new mongoose.Types.ObjectId(teamId);
+//             await existingUser.save();
+//           }
+//         }
+
+//         team.members?.push(newMember);
+//       }
+//     }
+
+//     const updatedTeam = await team.save();
+
+//     // Prepare response with member details
+//     const addedMembers = members.map(
+//       (member: TeamMemberInput, index: number) => {
+//         const savedMember = updatedTeam.members?.find(
+//           (m) => m.email === member.email
+//         );
+//         return {
+//           _id: savedMember?._id?.toString() || `temp-${teamId}-${index}`,
+//           email: member.email,
+//           roles: member.roles,
+//           status: savedMember?.status || "pending",
+//         };
+//       }
+//     );
+
+//     for (const member of members as TeamMemberInput[]) {
+//       const token = jwt.sign(
+//         {
+//           email: member.email,
+//           roles: member.roles,
+//           teamId: team._id,
+//         },
+//         config.JWT_INVITE_SECRET,
+//         { expiresIn: config.JWT_INVITE_EXPIRES_IN } as SignOptions
+//       );
+
+//       const inviteLink = `${config.MY_APP_FRONTEND_URL}/invite/accept?token=${token}&email=${encodeURIComponent(member.email)}`;
+
+//       const rolesText = member.roles.join(", ");
+
+//       const html = `
+//         <p>Hello,</p>
+//         <p>You’ve been invited to join the team "${team.teamName}" as a <strong>${rolesText}</strong>.</p>
+//         <p>Please click the button below to set your name and password:</p>
+//         <a href="${inviteLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;" target="_blank">
+//           Accept Invitation
+//         </a>
+//         <p style="margin-top: 10px;">This link will expire in <strong>${config.JWT_INVITE_EXPIRES_IN}</strong>.</p>
+//       `;
+
+//       await sendEmail({
+//         to: member.email,
+//         subject: `You're Invited to Join ${team.teamName} on TopRak`,
+//         html,
+//       });
+//     }
+
+//     responseHandler(
+//       res,
+//       200,
+//       "Team members added successfully. Invitations have been sent.",
+//       "success",
+//       { members: addedMembers }
+//     );
+//   } catch (error: any) {
+//     console.error("Add Team Members Error:", error.message || error);
+//     responseHandler(res, 500, "Internal server error");
+//   }
+// };
+
 export const addTeamMembers = async (req: Request, res: Response) => {
   const userId = req.userId;
   const { teamId, members } = req.body;
-  console.log("add", req.body);
+  console.log("addTeamMembers", { teamId, members });
   const validRoles: TeamRoles[] = [
     "Admin",
     "Buyer",
@@ -219,7 +377,7 @@ export const addTeamMembers = async (req: Request, res: Response) => {
   ];
 
   try {
-    // Validate members payload
+    // Validate payload
     if (!teamId || typeof teamId !== "string") {
       return responseHandler(res, 400, "Team ID is required");
     }
@@ -227,6 +385,7 @@ export const addTeamMembers = async (req: Request, res: Response) => {
       return responseHandler(res, 400, "Members list is required");
     }
 
+    // Validate members
     for (const member of members as TeamMemberInput[]) {
       if (
         !member.email ||
@@ -246,7 +405,7 @@ export const addTeamMembers = async (req: Request, res: Response) => {
       }
     }
 
-    // Find team by teamId and ensure it belongs to the user
+    // Find team and verify ownership
     const team = await Team.findOne({ _id: teamId, createdBy: userId });
     if (!team) {
       return responseHandler(
@@ -264,20 +423,40 @@ export const addTeamMembers = async (req: Request, res: Response) => {
       );
     }
 
+    // Batch fetch existing users by email
+    const memberEmails = members.map((m: TeamMemberInput) => m.email);
+    const existingUsers = await User.find({
+      email: { $in: memberEmails },
+    }).select("_id email teamId");
+    const userMap = new Map(existingUsers.map((user) => [user.email, user]));
+
+    // Update team members
+    const updatedMembers = [];
+    const usersToUpdate: {
+      _id: mongoose.Types.ObjectId;
+      teamId: mongoose.Types.ObjectId;
+    }[] = [];
+
     for (const member of members) {
       const existingMember = team.members?.find(
         (m) => m.email === member.email
       );
 
-      const existingUser = await User.findOne({ email: member.email });
-
       if (existingMember) {
+        // Update existing member roles
         const currentRoles = existingMember.roles as string[];
         const newRoles = member.roles.filter(
           (role: string) => !currentRoles.includes(role)
         );
         existingMember.roles = [...currentRoles, ...newRoles];
+        updatedMembers.push({
+          _id: existingMember._id?.toString(),
+          email: member.email,
+          roles: existingMember.roles,
+          status: existingMember.status,
+        });
       } else {
+        // Add new member
         const newMember: any = {
           email: member.email,
           roles: member.roles,
@@ -285,39 +464,48 @@ export const addTeamMembers = async (req: Request, res: Response) => {
           teamId: team._id,
         };
 
+        const existingUser = userMap.get(member.email);
         if (existingUser) {
           newMember.user = existingUser._id;
           if (
             !existingUser.teamId ||
             existingUser.teamId.toString() !== teamId
           ) {
-            existingUser.teamId = new mongoose.Types.ObjectId(teamId);
-            await existingUser.save();
+            usersToUpdate.push({
+              _id: new mongoose.Types.ObjectId(existingUser._id),
+              teamId: new mongoose.Types.ObjectId(teamId),
+            });
           }
         }
 
         team.members?.push(newMember);
+        updatedMembers.push({
+          _id:
+            newMember._id?.toString() ||
+            `temp-${teamId}-${members.indexOf(member)}`,
+          email: member.email,
+          roles: member.roles,
+          status: "pending",
+        });
       }
     }
 
+    // Batch update users' teamId
+    if (usersToUpdate.length > 0) {
+      const bulkOps = usersToUpdate.map(({ _id, teamId }) => ({
+        updateOne: {
+          filter: { _id },
+          update: { $set: { teamId } },
+        },
+      }));
+      await User.bulkWrite(bulkOps);
+    }
+
+    // Save team
     const updatedTeam = await team.save();
 
-    // Prepare response with member details
-    const addedMembers = members.map(
-      (member: TeamMemberInput, index: number) => {
-        const savedMember = updatedTeam.members?.find(
-          (m) => m.email === member.email
-        );
-        return {
-          _id: savedMember?._id?.toString() || `temp-${teamId}-${index}`,
-          email: member.email,
-          roles: member.roles,
-          status: savedMember?.status || "pending",
-        };
-      }
-    );
-
-    for (const member of members as TeamMemberInput[]) {
+    // Send invitation emails asynchronously
+    const emailPromises = members.map(async (member: TeamMemberInput) => {
       const token = jwt.sign(
         {
           email: member.email,
@@ -325,11 +513,10 @@ export const addTeamMembers = async (req: Request, res: Response) => {
           teamId: team._id,
         },
         config.JWT_INVITE_SECRET,
-        { expiresIn: config.JWT_INVITE_EXPIRES_IN } as SignOptions
+        { expiresIn: config.JWT_INVITE_EXPIRES_IN } as jwt.SignOptions
       );
 
       const inviteLink = `${config.MY_APP_FRONTEND_URL}/invite/accept?token=${token}&email=${encodeURIComponent(member.email)}`;
-
       const rolesText = member.roles.join(", ");
 
       const html = `
@@ -342,23 +529,26 @@ export const addTeamMembers = async (req: Request, res: Response) => {
         <p style="margin-top: 10px;">This link will expire in <strong>${config.JWT_INVITE_EXPIRES_IN}</strong>.</p>
       `;
 
-      await sendEmail({
+      return sendEmail({
         to: member.email,
         subject: `You're Invited to Join ${team.teamName} on TopRak`,
         html,
       });
-    }
+    });
 
-    responseHandler(
+    // Wait for all emails to be sent
+    await Promise.all(emailPromises);
+
+    return responseHandler(
       res,
       200,
       "Team members added successfully. Invitations have been sent.",
       "success",
-      { members: addedMembers }
+      { members: updatedMembers }
     );
   } catch (error: any) {
     console.error("Add Team Members Error:", error.message || error);
-    responseHandler(res, 500, "Internal server error");
+    return responseHandler(res, 500, "Internal server error");
   }
 };
 
@@ -505,6 +695,3 @@ export const acceptInvitation = async (req: Request, res: Response) => {
     return responseHandler(res, 500, "Internal server error");
   }
 };
-
-
-

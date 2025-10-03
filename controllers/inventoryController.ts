@@ -5,6 +5,7 @@ import { AdminProduct } from "../schemas/AdminProduct";
 import { responseHandler } from "../utils/responseHandler";
 import Order from "../schemas/Order";
 import asyncHandler from "express-async-handler";
+import Client from "../schemas/ClientDetails";
 
 const getAllInventories: RequestHandler = async (req, res) => {
   try {
@@ -90,104 +91,104 @@ const getAllInventories: RequestHandler = async (req, res) => {
   }
 };
 
-const addStockOnInventory: RequestHandler = async (req, res) => {
-  try {
-    const {
-      clientId,
-      adminProductId,
-      grade,
-      pricePerUnit,
-      qtyInStock,
-      qtyIncoming,
-      sourceCountry,
-      ccy,
-      buyingPrice,
-      tradingPrice,
-    } = req.body;
+// const addStockOnInventory: RequestHandler = async (req, res) => {
+//   try {
+//     const {
+//       clientId,
+//       adminProductId,
+//       grade,
+//       pricePerUnit,
+//       qtyInStock,
+//       qtyIncoming,
+//       sourceCountry,
+//       ccy,
+//       buyingPrice,
+//       tradingPrice,
+//     } = req.body;
 
-    // Validate required fields
-    if (
-      !adminProductId ||
-      !grade ||
-      !pricePerUnit ||
-      qtyInStock === undefined ||
-      qtyIncoming === undefined ||
-      !sourceCountry ||
-      !ccy ||
-      !buyingPrice ||
-      !tradingPrice
-    ) {
-      res.status(400).json({ message: "All fields are required" });
-      return;
-    }
+//     // Validate required fields
+//     if (
+//       !adminProductId ||
+//       !grade ||
+//       !pricePerUnit ||
+//       qtyInStock === undefined ||
+//       qtyIncoming === undefined ||
+//       !sourceCountry ||
+//       !ccy ||
+//       !buyingPrice ||
+//       !tradingPrice
+//     ) {
+//       res.status(400).json({ message: "All fields are required" });
+//       return;
+//     }
 
-    // Validate ObjectId fields
-    if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
-      res.status(400).json({ message: "Invalid adminProductId format" });
-      return;
-    }
+//     // Validate ObjectId fields
+//     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
+//       res.status(400).json({ message: "Invalid adminProductId format" });
+//       return;
+//     }
 
-    // Validate referenced documents
-    const product = await AdminProduct.findById(adminProductId);
-    if (!product) {
-      res.status(404).json({ message: "Product not found" });
-      return;
-    }
+//     // Validate referenced documents
+//     const product = await AdminProduct.findById(adminProductId);
+//     if (!product) {
+//       res.status(404).json({ message: "Product not found" });
+//       return;
+//     }
 
-    // const existedInventoryProduct = await Inventory.findOne({
-    //   userId: req.userId,
-    //   adminProductId,
-    // });
+//     // const existedInventoryProduct = await Inventory.findOne({
+//     //   userId: req.userId,
+//     //   adminProductId,
+//     // });
 
-    // if (existedInventoryProduct) {
-    //   await Inventory.updateOne(
-    //     {
-    //       _id: existedInventoryProduct._id,
-    //     },
-    //     {
-    //       $inc: {
-    //         qtyInStock,
-    //         qtyIncoming,
-    //       },
-    //       $set: {
-    //         pricePerUnit,
-    //         sourceCountry,
-    //         ccy,
-    //         buyingPrice,
-    //         tradingPrice,
-    //       },
-    //     }
-    //   );
-    // }
-    //  else {
-      
-    // }
-    await Inventory.create({
-        userId: req.userId,
-        clientId: clientId || req.userId,
-        adminProductId,
-        grade: grade.toUpperCase(),
-        pricePerUnit,
-        qtyInStock,
-        qtyIncoming,
-        sourceCountry: sourceCountry.toUpperCase(),
-        ccy: ccy.toUpperCase(),
-        buyingPrice,
-        tradingPrice,
-      });
+//     // if (existedInventoryProduct) {
+//     //   await Inventory.updateOne(
+//     //     {
+//     //       _id: existedInventoryProduct._id,
+//     //     },
+//     //     {
+//     //       $inc: {
+//     //         qtyInStock,
+//     //         qtyIncoming,
+//     //       },
+//     //       $set: {
+//     //         pricePerUnit,
+//     //         sourceCountry,
+//     //         ccy,
+//     //         buyingPrice,
+//     //         tradingPrice,
+//     //       },
+//     //     }
+//     //   );
+//     // }
+//     //  else {
 
-    res.status(200).json({ message: "Stock added to inventory successfully" });
-  } catch (error: any) {
-    console.error(
-      "Error adding stock to inventory:",
-      error.message,
-      error.stack
-    );
-    res
-      .status(400)
-      .json({ message: error.message || "Error adding stock to inventory" });
-  }
-};
+//     // }
+//     await Inventory.create({
+//         userId: req.userId,
+//         clientId: clientId || req.userId,
+//         adminProductId,
+//         grade: grade.toUpperCase(),
+//         pricePerUnit,
+//         qtyInStock,
+//         qtyIncoming,
+//         sourceCountry: sourceCountry.toUpperCase(),
+//         ccy: ccy.toUpperCase(),
+//         buyingPrice,
+//         tradingPrice,
+//       });
+
+//     res.status(200).json({ message: "Stock added to inventory successfully" });
+//   } catch (error: any) {
+//     console.error(
+//       "Error adding stock to inventory:",
+//       error.message,
+//       error.stack
+//     );
+//     res
+//       .status(400)
+//       .json({ message: error.message || "Error adding stock to inventory" });
+//   }
+// };
 
 const getAllProductNames: RequestHandler = async (req, res) => {
   try {
@@ -371,6 +372,189 @@ const updateTradingPrice = asyncHandler(async (req: Request, res: Response) => {
 
   responseHandler(res, 200, "Trading price updated successfully", "success");
 });
+
+const addStockOnInventory: RequestHandler = async (req, res) => {
+  try {
+    const {
+      clientId,
+      adminProductId,
+      size,
+      color,
+      vat,
+      sellBy,
+      boxSize,
+      shelfLife,
+      season,
+      month,
+      countryOfOrigin,
+      variety,
+    } = req.body;
+
+    // Validate ObjectId fields
+    if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
+      return res.status(400).json({ message: "Invalid adminProductId format" });
+    }
+    if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
+      return res.status(400).json({ message: "Invalid clientId format" });
+    }
+
+    // Validate referenced documents
+    const product = await AdminProduct.findById(adminProductId);
+    if (!product) {
+      return res.status(400).json({ message: "Product not found" });
+    }
+
+    // Validate client if clientId is provided
+    let client = null;
+    if (clientId) {
+      client = await Client.findById(clientId);
+      if (!client) {
+        return res.status(400).json({ message: "Client not found" });
+      }
+    }
+
+    // Validate season
+    const validMonths = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    if (
+      !Array.isArray(season) ||
+      !season.every((m: string) => validMonths.includes(m))
+    ) {
+      return res
+        .status(400)
+        .json({
+          message: "Invalid season format. Must be an array of valid months.",
+        });
+    }
+
+    // Validate month
+    if (
+      !Array.isArray(month) ||
+      month.length === 0 ||
+      !month.every((m: string) => validMonths.includes(m))
+    ) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "Invalid month format. Must be a non-empty array of valid months.",
+        });
+    }
+
+    // Validate sellBy
+    const validSellByTypes = [
+      "Box",
+      "Kg",
+      "Unit",
+      "Dozen",
+      "Liter",
+      "Packet",
+      "Gram",
+      "Pound",
+      "Ounce",
+      "Milliliter",
+    ];
+    if (!validSellByTypes.includes(sellBy)) {
+      return res
+        .status(400)
+        .json({
+          message: `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}`,
+        });
+    }
+
+    // Validate boxSize based on sellBy
+    if (sellBy === "Box" && (!boxSize || typeof boxSize !== "string")) {
+      return res
+        .status(400)
+        .json({ message: "Box size is required when sellBy is 'Box'" });
+    }
+    if (sellBy !== "Box" && boxSize) {
+      return res
+        .status(400)
+        .json({
+          message: "Box size should not be provided when sellBy is not 'Box'",
+        });
+    }
+
+    // Validate size and color against AdminProduct
+    if (size !== product.size) {
+      return res
+        .status(400)
+        .json({
+          message: `Size "${size}" does not match product's size "${product.size}"`,
+        });
+    }
+    if (color && product.color && color !== product.color) {
+      return res
+        .status(400)
+        .json({
+          message: `Color "${color}" does not match product's color "${product.color}"`,
+        });
+    }
+
+    // Validate vat
+    if (isNaN(parseFloat(vat)) || parseFloat(vat) < 0) {
+      return res
+        .status(400)
+        .json({ message: "VAT must be a non-negative number" });
+    }
+
+    // Create inventory entry
+    const inventoryEntry = await Inventory.create({
+      userId: req.userId,
+      clientId: clientId || req.userId,
+      adminProductId,
+      size,
+      color: color || null,
+      vat: parseFloat(vat),
+      sellBy,
+      boxSize: sellBy === "Box" ? boxSize : undefined,
+      shelfLife,
+      season,
+      month,
+      countryOfOrigin,
+      variety,
+    });
+
+    // Update client's inventoryIds if clientId is provided
+    if (clientId && client) {
+      await Client.findByIdAndUpdate(
+        clientId,
+        { $addToSet: { inventoryIds: inventoryEntry._id } }, // Add inventory ID to client's inventoryIds
+        { new: true }
+      );
+    }
+
+    return res
+      .status(201)
+      .json({
+        message:
+          "Stock added to inventory and associated with client successfully",
+        inventory: inventoryEntry,
+      });
+  } catch (error: any) {
+    console.error(
+      "Error adding stock to inventory:",
+      error.message,
+      error.stack
+    );
+    return res
+      .status(400)
+      .json({ message: error.message || "Error adding stock to inventory" });
+  }
+};
 
 export {
   getAllInventories,
