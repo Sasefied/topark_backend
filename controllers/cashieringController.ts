@@ -541,7 +541,7 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
         $lookup: {
           from: "clients",
           localField: "inventory.clientId",
-          foreignField: "userId",
+          foreignField: "_id",
           as: "clientDetails",
         },
       },

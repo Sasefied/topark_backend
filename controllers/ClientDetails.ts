@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import Client, { IClient } from "../schemas/ClientDetails";
-import User from "../schemas/User";
+import User, { IUser } from "../schemas/User";
 import MyClient from "../schemas/MyClient";
 import { responseHandler } from "../utils/responseHandler";
 import sendEmail from "../utils/mail";
@@ -51,7 +51,6 @@ const validateEmail = (email: string | undefined): boolean =>
 
 const validateCreditPeriod = (period: any): boolean =>
   period !== undefined && VALID_CREDIT_PERIODS.includes(Number(period));
-
 
 const addStockOnInventory = async (
   userId: string,
@@ -138,8 +137,7 @@ const addStockOnInventory = async (
   return inventoryEntry[0];
 };
 
-
-  interface Counter {
+interface Counter {
   _id: string;
   sequence: number;
 }
@@ -160,7 +158,11 @@ const getNextClientId = async (session: ClientSession): Promise<string> => {
     .session(session)
     .lean();
   let maxSequence = 0;
-  if (lastClient && lastClient.clientId && lastClient.clientId.startsWith("CLIENT-")) {
+  if (
+    lastClient &&
+    lastClient.clientId &&
+    lastClient.clientId.startsWith("CLIENT-")
+  ) {
     const lastNumber = parseInt(lastClient.clientId.replace("CLIENT-", ""), 10);
     if (!isNaN(lastNumber)) {
       maxSequence = lastNumber;
@@ -184,8 +186,6 @@ const getNextClientId = async (session: ClientSession): Promise<string> => {
   return `CLIENT-${String(counter.sequence).padStart(3, "0")}`;
 };
 
-
-
 export const createClient = async (
   req: Request,
   res: Response
@@ -195,7 +195,6 @@ export const createClient = async (
 
   try {
     const {
-      userId,
       clientName,
       workanniversary,
       clientEmail,
@@ -216,6 +215,7 @@ export const createClient = async (
       supplierCreditLimitDays,
       products,
     } = req.body;
+    const userId = new Types.ObjectId(req.userId);
 
     // Validate required fields
     if (
@@ -328,16 +328,39 @@ export const createClient = async (
       throw new BadRequestError("Client email already exists");
     }
 
-    // Verify authenticated user
-    const createdBy = new mongoose.Types.ObjectId(req.userId);
-    if (!createdBy) {
-      throw new BadRequestError("Authentication required");
-    }
-
-    const user = await User.findById(createdBy).session(session);
+    const user = await User.findById(userId).session(session);
     if (!user) {
       throw new BadRequestError("Invalid user");
     }
+
+    const existingUser = await User.findOne({ email: clientEmail }).session(
+      session
+    );
+    if (existingUser) {
+      throw new BadRequestError("Client email already exists");
+    }
+
+    const [offlineUser]: IUser[] = await User.create(
+      [
+        {
+          firstName: clientName,
+          lastName: "-",
+          email: clientEmail,
+          password: Math.random().toString(36).substring(2).toLocaleUpperCase(),
+          companyName: registeredName,
+          companyEmail: clientEmail,
+          companyReferenceNumber: Math.random()
+            .toString(36)
+            .substring(2)
+            .toLocaleUpperCase(),
+          isOfflineUser: true,
+          roles: ["Buyer"],
+        },
+      ],
+      { session }
+    );
+
+    console.log(`offline user created: ${offlineUser}`);
 
     // Construct the creditLimit object
     const creditLimitData = creditLimit
@@ -350,7 +373,7 @@ export const createClient = async (
     // Construct the client data
     const clientData: Partial<IClient> = {
       clientId,
-      userId,
+      userId: new Types.ObjectId(offlineUser._id),
       clientName,
       workanniversary: workanniversary ? new Date(workanniversary) : null,
       clientEmail,
@@ -359,7 +382,7 @@ export const createClient = async (
       countryName: countryName || "",
       clientNotes: clientNotes || "",
       companyReferenceNumber: companyReferenceNumber || clientId,
-      createdBy,
+      createdBy: userId,
       creditLimit: creditLimitData,
       preference,
     };
@@ -388,7 +411,12 @@ export const createClient = async (
     // Add the new client to MyClient.clientId array
     await MyClient.findOneAndUpdate(
       { userId: userId.toString() },
-      { $addToSet: { clientId: newClient._id } },
+      {
+        $addToSet: {
+          clientId: newClient._id,
+          client: { userId: offlineUser._id, clientId: newClient._id },
+        },
+      },
       { upsert: true, session }
     );
 
@@ -397,7 +425,7 @@ export const createClient = async (
       await Promise.all(
         products.map((product: IInventory) =>
           addStockOnInventory(
-            req.userId!,
+            offlineUser._id,
             product,
             session,
             String(newClient._id)
@@ -497,7 +525,11 @@ export const addClientToUser = async (
     const { clientId, client: clientData } = req.body;
     const userId = req.userId;
 
-    console.log("addClientToUser - Request body:", { clientId, clientData, userId });
+    console.log("addClientToUser - Request body:", {
+      clientId,
+      clientData,
+      userId,
+    });
 
     // Validate inputs
     if (!userId || !Types.ObjectId.isValid(userId)) {
@@ -505,7 +537,12 @@ export const addClientToUser = async (
       return;
     }
     if (!clientId || !Types.ObjectId.isValid(clientId)) {
-      responseHandler(res, 400, "Invalid or missing clientId; must be a valid ObjectId", "error");
+      responseHandler(
+        res,
+        400,
+        "Invalid or missing clientId; must be a valid ObjectId",
+        "error"
+      );
       return;
     }
 
@@ -517,7 +554,10 @@ export const addClientToUser = async (
     }
 
     // Validate clientData if provided
-    let validClientEntries: { userId: Types.ObjectId; clientId: Types.ObjectId }[] = [];
+    let validClientEntries: {
+      userId: Types.ObjectId;
+      clientId: Types.ObjectId;
+    }[] = [];
     if (clientData && Array.isArray(clientData)) {
       validClientEntries = clientData
         .filter(
@@ -531,13 +571,20 @@ export const addClientToUser = async (
         }));
 
       if (validClientEntries.length === 0 && clientData.length > 0) {
-        responseHandler(res, 400, "No valid client entries in clientData", "error");
+        responseHandler(
+          res,
+          400,
+          "No valid client entries in clientData",
+          "error"
+        );
         return;
       }
     }
 
     // Update MyClient document
-    const updateData: any = { $addToSet: { clientId: new Types.ObjectId(clientId) } };
+    const updateData: any = {
+      $addToSet: { clientId: new Types.ObjectId(clientId) },
+    };
     if (validClientEntries.length > 0) {
       updateData.$addToSet.client = { $each: validClientEntries };
     }
@@ -1119,7 +1166,6 @@ export const searchClients = async (
   }
 };
 
-
 export const getClientById = async (
   req: Request,
   res: Response
@@ -1209,7 +1255,6 @@ export const getClientById = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-
 
 export const updateClient = async (
   req: Request,
@@ -1593,7 +1638,7 @@ export const getProductByClientId = async (
     // const clientObjectId = new Types.ObjectId(clientId as string);
 
     // Verify client exists
-    const client = await Client.findOne({clientId}).select("_id").lean();
+    const client = await Client.findOne({ clientId }).select("_id").lean();
     if (!client) {
       responseHandler(res, 404, "Client not found", "error");
       return;
@@ -1603,7 +1648,7 @@ export const getProductByClientId = async (
     const pipeline = [
       {
         $match: {
-          clientId
+          clientId,
         },
       },
       {

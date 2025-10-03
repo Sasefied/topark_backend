@@ -16,6 +16,7 @@ export interface IUser extends Document {
   status?: "pending" | "active" | "inactive";
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
+  isOfflineUser?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
   createPasswordResetToken: () => string;
@@ -45,6 +46,7 @@ const userSchema: Schema<IUser> = new Schema(
     teamId: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
+    isOfflineUser: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
