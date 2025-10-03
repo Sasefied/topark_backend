@@ -148,7 +148,7 @@ const CounterSchema = new mongoose.Schema({
   sequence: { type: Number, default: 0 },
 });
 
-const Counter = mongoose.model("Counter", CounterSchema);
+export const Counter = mongoose.model("Counter", CounterSchema);
 
 // Function to get the next clientId
 const getNextClientId = async (session: ClientSession): Promise<string> => {
