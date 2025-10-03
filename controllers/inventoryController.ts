@@ -6,6 +6,7 @@ import { responseHandler } from "../utils/responseHandler";
 import Order from "../schemas/Order";
 import asyncHandler from "express-async-handler";
 import Client from "../schemas/ClientDetails";
+import { BadRequestError } from "../utils/errors";
 
 const getAllInventories: RequestHandler = async (req, res) => {
   try {
@@ -376,16 +377,16 @@ const updateTradingPrice = asyncHandler(async (req: Request, res: Response) => {
 const addStockOnInventory: RequestHandler = async (req, res) => {
   try {
     const {
+      userId,
       clientId,
       adminProductId,
       size,
       color,
       vat,
       sellBy,
-      boxSize,
+      sellByQuantity,
       shelfLife,
       season,
-      month,
       countryOfOrigin,
       variety,
     } = req.body;
@@ -432,25 +433,9 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       !Array.isArray(season) ||
       !season.every((m: string) => validMonths.includes(m))
     ) {
-      return res
-        .status(400)
-        .json({
-          message: "Invalid season format. Must be an array of valid months.",
-        });
-    }
-
-    // Validate month
-    if (
-      !Array.isArray(month) ||
-      month.length === 0 ||
-      !month.every((m: string) => validMonths.includes(m))
-    ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Invalid month format. Must be a non-empty array of valid months.",
-        });
+      return res.status(400).json({
+        message: "Invalid season format. Must be an array of valid months.",
+      });
     }
 
     // Validate sellBy
@@ -467,41 +452,21 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       "Milliliter",
     ];
     if (!validSellByTypes.includes(sellBy)) {
-      return res
-        .status(400)
-        .json({
-          message: `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}`,
-        });
-    }
-
-    // Validate boxSize based on sellBy
-    if (sellBy === "Box" && (!boxSize || typeof boxSize !== "string")) {
-      return res
-        .status(400)
-        .json({ message: "Box size is required when sellBy is 'Box'" });
-    }
-    if (sellBy !== "Box" && boxSize) {
-      return res
-        .status(400)
-        .json({
-          message: "Box size should not be provided when sellBy is not 'Box'",
-        });
+      return res.status(400).json({
+        message: `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}`,
+      });
     }
 
     // Validate size and color against AdminProduct
     if (size !== product.size) {
-      return res
-        .status(400)
-        .json({
-          message: `Size "${size}" does not match product's size "${product.size}"`,
-        });
+      return res.status(400).json({
+        message: `Size "${size}" does not match product's size "${product.size}"`,
+      });
     }
     if (color && product.color && color !== product.color) {
-      return res
-        .status(400)
-        .json({
-          message: `Color "${color}" does not match product's color "${product.color}"`,
-        });
+      return res.status(400).json({
+        message: `Color "${color}" does not match product's color "${product.color}"`,
+      });
     }
 
     // Validate vat
@@ -513,37 +478,34 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
 
     // Create inventory entry
     const inventoryEntry = await Inventory.create({
-      userId: req.userId,
-      clientId: clientId || req.userId,
+      userId,
+      clientId,
       adminProductId,
       size,
       color: color || null,
-      vat: parseFloat(vat),
+      vat: vat !== undefined ? parseFloat(vat.toString()) : undefined,
       sellBy,
-      boxSize: sellBy === "Box" ? boxSize : undefined,
       shelfLife,
       season,
-      month,
       countryOfOrigin,
       variety,
+      sellByQuantity,
     });
 
     // Update client's inventoryIds if clientId is provided
-    if (clientId && client) {
-      await Client.findByIdAndUpdate(
-        clientId,
-        { $addToSet: { inventoryIds: inventoryEntry._id } }, // Add inventory ID to client's inventoryIds
-        { new: true }
-      );
-    }
+    // if (clientId && client) {
+    //   await Client.findByIdAndUpdate(
+    //     clientId,
+    //     { $addToSet: { inventoryIds: inventoryEntry._id } }, // Add inventory ID to client's inventoryIds
+    //     { new: true }
+    //   );
+    // }
 
-    return res
-      .status(201)
-      .json({
-        message:
-          "Stock added to inventory and associated with client successfully",
-        inventory: inventoryEntry,
-      });
+    return res.status(201).json({
+      message:
+        "Stock added to inventory and associated with client successfully",
+      inventory: inventoryEntry,
+    });
   } catch (error: any) {
     console.error(
       "Error adding stock to inventory:",
@@ -556,6 +518,170 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
   }
 };
 
+const deleteInventoryById = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new BadRequestError("Invalid inventory ID format");
+    }
+
+    const inventory = await Inventory.findById(id);
+    if (!inventory) {
+      throw new BadRequestError("Inventory not found");
+    }
+
+    await Inventory.findByIdAndDelete(id);
+    responseHandler(res, 200, "Inventory deleted successfully", "success");
+  }
+);
+
+const updateInventoryById = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new BadRequestError("Invalid inventory ID format");
+    }
+
+    const {
+      userId,
+      clientId,
+      adminProductId,
+      size,
+      color,
+      vat,
+      sellBy,
+      sellByQuantity,
+      shelfLife,
+      season,
+      countryOfOrigin,
+      variety,
+    } = req.body;
+
+    // Validate ObjectId fields
+    if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
+      throw new BadRequestError("Invalid adminProductId format");
+    }
+    if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
+      throw new BadRequestError("Invalid clientId format");
+    }
+
+    // Validate referenced documents
+    const product = await AdminProduct.findById(adminProductId);
+    if (!product) {
+      throw new BadRequestError("Product not found");
+    }
+
+    // Validate client if clientId is provided
+    let client = null;
+    if (clientId) {
+      client = await Client.findById(clientId);
+      if (!client) {
+        throw new BadRequestError("Client not found");
+      }
+    }
+
+    // Validate season
+    const validMonths = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    if (
+      !Array.isArray(season) ||
+      !season.every((m: string) => validMonths.includes(m))
+    ) {
+      throw new BadRequestError(
+        "Invalid season format. Must be an array of valid months."
+      );
+    }
+
+    // Validate sellBy
+    const validSellByTypes = [
+      "Box",
+      "Kg",
+      "Unit",
+      "Dozen",
+      "Liter",
+      "Packet",
+      "Gram",
+      "Pound",
+      "Ounce",
+      "Milliliter",
+    ];
+    if (!validSellByTypes.includes(sellBy)) {
+      throw new BadRequestError(
+        `Invalid sellBy. Must be one of: ${validSellByTypes.join(", ")}`
+      );
+    }
+
+    // Validate size and color against AdminProduct
+    if (size !== product.size) {
+      throw new BadRequestError(
+        `Size "${size}" does not match product's size "${product.size}"`
+      );
+    }
+    if (color && product.color && color !== product.color) {
+      throw new BadRequestError(
+        `Color "${color}" does not match product's color "${product.color}"`
+      );
+    }
+
+    // Validate vat
+    if (isNaN(parseFloat(vat)) || parseFloat(vat) < 0) {
+      throw new BadRequestError("VAT must be a non-negative number");
+    }
+
+    const inventory = await Inventory.findById(id);
+    if (!inventory) {
+      throw new BadRequestError("Inventory not found");
+    }
+
+    inventory.userId = userId;
+    inventory.clientId = clientId;
+    inventory.adminProductId = adminProductId;
+    inventory.size = size;
+    inventory.color = color || null;
+    inventory.vat = vat !== undefined ? parseFloat(vat.toString()) : undefined;
+    inventory.sellBy = sellBy;
+    inventory.sellByQuantity = sellByQuantity;
+    inventory.shelfLife = shelfLife;
+    inventory.season = season;
+    inventory.countryOfOrigin = countryOfOrigin;
+    inventory.variety = variety;
+    await inventory.save();
+
+    responseHandler(res, 200, "Inventory updated successfully", "success", {
+      inventory,
+    });
+  }
+);
+
+const getInventoryById = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new BadRequestError("Invalid inventory ID format");
+  }
+
+  const inventory = await Inventory.findById(id);
+  if (!inventory) {
+    throw new BadRequestError("Inventory not found");
+  }
+  responseHandler(res, 200, "Inventory found successfully", "success", {
+    inventory,
+  });
+});
+
 export {
   getAllInventories,
   addStockOnInventory,
@@ -563,4 +689,7 @@ export {
   getProductById,
   getDeliveredOrders,
   updateTradingPrice,
+  deleteInventoryById,
+  updateInventoryById,
+  getInventoryById,
 };

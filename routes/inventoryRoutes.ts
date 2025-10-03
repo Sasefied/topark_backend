@@ -1,10 +1,13 @@
 import { Router } from "express";
 import {
   addStockOnInventory,
+  deleteInventoryById,
   getAllInventories,
   getAllProductNames,
   getDeliveredOrders,
+  getInventoryById,
   getProductById,
+  updateInventoryById,
   updateTradingPrice,
 } from "../controllers/inventoryController";
 import {
@@ -21,6 +24,9 @@ router
   .get("/products/names", validate, getAllProductNames)
   .get("/products/:productId", validate, getProductById)
   .get("/delivered-orders", getDeliveredOrders)
-  .patch("/trading-price/:id", updateTradingPrice);
+  .patch("/trading-price/:id", updateTradingPrice)
+  .get("/inventory/:id", getInventoryById)
+  .delete("/inventory/:id", deleteInventoryById)
+  .patch("/inventory/:id", updateInventoryById);
 
 export default router;
