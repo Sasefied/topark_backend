@@ -122,7 +122,7 @@ const addStockOnInventory = async (
         adminProductId,
         size,
         color: color || null,
-        vat: vat !== undefined ? parseFloat(vat.toString()) : undefined,
+        vat,
         sellBy,
         shelfLife,
         season,
@@ -1256,6 +1256,262 @@ export const getClientById = async (
   }
 };
 
+// export const updateClient = async (
+//   req: Request,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     const { clientId } = req.params;
+//     const updatedClientData: Partial<IClient> = req.body;
+//     console.log(clientId, "...")
+//     // Prevent updating clientId
+//     delete updatedClientData.clientId;
+
+//     const existingClient = await Client.findOne({ clientId });
+//     if (!existingClient) {
+//       responseHandler(res, 404, "Client not found", "error");
+//       return;
+//     }
+
+//     const finalPreference =
+//       updatedClientData.preference || existingClient.preference;
+
+//     // Validate workanniversary format
+//     if (updatedClientData.workanniversary) {
+//       updatedClientData.workanniversary = new Date(
+//         updatedClientData.workanniversary
+//       );
+//       if (isNaN(updatedClientData.workanniversary.getTime())) {
+//         responseHandler(
+//           res,
+//           400,
+//           "Invalid workanniversary date format",
+//           "error"
+//         );
+//         return;
+//       }
+//     }
+
+//     // Validate creditLimit if provided
+//     if (updatedClientData.creditLimit) {
+//       if (
+//         typeof updatedClientData.creditLimit.amount !== "number" ||
+//         isNaN(updatedClientData.creditLimit.amount) ||
+//         updatedClientData.creditLimit.amount < 0
+//       ) {
+//         responseHandler(
+//           res,
+//           400,
+//           "Invalid creditLimit.amount. Must be a valid non-negative number.",
+//           "error"
+//         );
+//         return;
+//       }
+//       if (
+//         updatedClientData.creditLimit.period !== undefined &&
+//         !["0", "1", "7", "14", "30", "60", "90"].includes(
+//           updatedClientData.creditLimit.period.toString()
+//         )
+//       ) {
+//         responseHandler(
+//           res,
+//           400,
+//           "Credit limit period must be one of: 0, 1, 7, 14, 30, 60, 90",
+//           "error"
+//         );
+//         return;
+//       }
+//       updatedClientData.creditLimit.period =
+//         updatedClientData.creditLimit.period ?? 0;
+//     }
+
+//     // Validate preference if provided
+//     if (
+//       updatedClientData.preference &&
+//       !["Client", "Supplier"].includes(updatedClientData.preference)
+//     ) {
+//       responseHandler(
+//         res,
+//         400,
+//         "Preference must be either 'Client' or 'Supplier'",
+//         "error"
+//       );
+//       return;
+//     }
+
+//     if (updatedClientData.supplier && finalPreference !== "Supplier") {
+//       responseHandler(
+//         res,
+//         400,
+//         "Supplier fields can only be set for Supplier preference",
+//         "error"
+//       );
+//       return;
+//     }
+
+//     if (updatedClientData.deliveryAddress && finalPreference !== "Client") {
+//       responseHandler(
+//         res,
+//         400,
+//         "Delivery address can only be set for Client preference",
+//         "error"
+//       );
+//       return;
+//     }
+
+//     // Unset irrelevant fields based on preference
+//     if (updatedClientData.preference) {
+//       if (updatedClientData.preference === "Client") {
+//         updatedClientData.supplier = undefined;
+//       } else if (updatedClientData.preference === "Supplier") {
+//         updatedClientData.deliveryAddress = undefined;
+//       }
+//     }
+
+//     // Validate supplier if provided
+//     if (updatedClientData.supplier) {
+//       const supplier = updatedClientData.supplier;
+
+//       if (supplier.creditLimitAmount !== undefined) {
+//         if (
+//           typeof supplier.creditLimitAmount !== "number" ||
+//           isNaN(supplier.creditLimitAmount) ||
+//           supplier.creditLimitAmount < 0
+//         ) {
+//           responseHandler(
+//             res,
+//             400,
+//             "Invalid supplier.creditLimitAmount. Must be a valid non-negative number.",
+//             "error"
+//           );
+//           return;
+//         }
+//       }
+
+//       if (supplier.creditLimitDays !== undefined) {
+//         if (
+//           !["0", "1", "7", "14", "30", "60", "90"].includes(
+//             supplier.creditLimitDays.toString()
+//           )
+//         ) {
+//           responseHandler(
+//             res,
+//             400,
+//             "Supplier credit limit days must be one of: 0, 1, 7, 14, 30, 60, 90",
+//             "error"
+//           );
+//           return;
+//         }
+//       }
+
+//       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//       const emailFields = [
+//         supplier.invoiceEmail,
+//         supplier.returnToSupplierEmail,
+//         supplier.quantityIssueEmail,
+//         supplier.qualityIssueEmail,
+//         supplier.deliveryDelayIssueEmail,
+//       ].filter((email) => email !== undefined && email !== "");
+//       const invalidEmails = emailFields.filter(
+//         (email) => !emailRegex.test(email.trim())
+//       );
+//       if (invalidEmails.length > 0) {
+//         responseHandler(
+//           res,
+//           400,
+//           "One or more supplier email fields have invalid format",
+//           "error"
+//         );
+//         return;
+//       }
+//     }
+
+//     // Find and update the client
+//     const client = await Client.findOneAndUpdate(
+//       { clientId },
+//       updatedClientData,
+//       { new: true, runValidators: true }
+//     ).populate(
+//       "createdBy",
+//       "firstName lastName companyName companyReferenceNumber"
+//     );
+
+//     console.log("updateClient - Updated client:", { clientId, client });
+
+//     if (!client || !client.clientName || !client.clientId) {
+//       console.warn("updateClient - Invalid client data:", client);
+//       responseHandler(res, 404, "Client not found or invalid data", "error");
+//       return;
+//     }
+
+//     // Construct response with all fields including new ones
+//     const clientData = {
+//       _id: client._id.toString(),
+//       userId: client.userId?.toString() || "",
+//       clientId: client.clientId,
+//       clientName: client.clientName,
+//       clientEmail: client.clientEmail,
+//       countryName: client.countryName || "",
+//       registeredName: client.registeredName,
+//       workanniversary: client.workanniversary
+//         ? client.workanniversary.toISOString()
+//         : null,
+//       registeredAddress: client.registeredAddress,
+//       deliveryAddress: client.deliveryAddress,
+//       clientNotes: client.clientNotes,
+//       companyReferenceNumber: client.companyReferenceNumber,
+//       relatedClientIds:
+//         client.relatedClientIds?.map((id) => id.toString()) || [],
+//       creditLimit: {
+//         amount: client.creditLimit?.amount || 0,
+//         period: client.creditLimit?.period || 0,
+//       },
+//       preference: client.preference,
+//       supplier: client.supplier
+//         ? {
+//             creditLimitAmount: client.supplier.creditLimitAmount || 0,
+//             creditLimitDays: client.supplier.creditLimitDays || 0,
+//             invoiceEmail: client.supplier.invoiceEmail || "",
+//             returnToSupplierEmail: client.supplier.returnToSupplierEmail || "",
+//             quantityIssueEmail: client.supplier.quantityIssueEmail || "",
+//             qualityIssueEmail: client.supplier.qualityIssueEmail || "",
+//             deliveryDelayIssueEmail:
+//               client.supplier.deliveryDelayIssueEmail || "",
+//           }
+//         : undefined,
+//       createdBy: client.createdBy
+//         ? {
+//             _id: client.createdBy._id.toString(),
+//             firstName: (client as any).createdBy.firstName || "",
+//             lastName: (client as any).createdBy.lastName || "",
+//             companyName: (client as any).createdBy.companyName || "",
+//             companyReferenceNumber:
+//               (client as any).createdBy.companyReferenceNumber || "",
+//           }
+//         : null,
+//     };
+
+//     responseHandler(
+//       res,
+//       200,
+//       "Client updated successfully",
+//       "success",
+//       clientData
+//     );
+//   } catch (error: any) {
+//     console.error("updateClient - Error:", {
+//       message: error.message,
+//       stack: error.stack,
+//       body: req.body,
+//       validationErrors: error.errors || null,
+//     });
+//     if (error.name === "ValidationError") {
+//       responseHandler(res, 400, `Validation error: ${error.message}`, "error");
+//       return;
+//     }
+//     responseHandler(res, 500, "Internal server error", "error");
+//   }
+// };
 export const updateClient = async (
   req: Request,
   res: Response
@@ -1263,6 +1519,19 @@ export const updateClient = async (
   try {
     const { clientId } = req.params;
     const updatedClientData: Partial<IClient> = req.body;
+
+    console.log("updateClient - Request params and body:", { clientId, updatedClientData });
+
+    // Validate clientId
+    if (!clientId || typeof clientId !== "string" || !clientId.startsWith("CLIENT-")) {
+      responseHandler(
+        res,
+        400,
+        "Invalid or missing clientId; must be a string starting with 'CLIENT-'",
+        "error"
+      );
+      return;
+    }
 
     // Prevent updating clientId
     delete updatedClientData.clientId;
@@ -1309,9 +1578,7 @@ export const updateClient = async (
       }
       if (
         updatedClientData.creditLimit.period !== undefined &&
-        !["0", "1", "7", "14", "30", "60", "90"].includes(
-          updatedClientData.creditLimit.period.toString()
-        )
+        !VALID_CREDIT_PERIODS.includes(Number(updatedClientData.creditLimit.period))
       ) {
         responseHandler(
           res,
@@ -1328,32 +1595,32 @@ export const updateClient = async (
     // Validate preference if provided
     if (
       updatedClientData.preference &&
-      !["Client", "Supplier"].includes(updatedClientData.preference)
+      !["Client", "Supplier", "Both"].includes(updatedClientData.preference)
     ) {
       responseHandler(
         res,
         400,
-        "Preference must be either 'Client' or 'Supplier'",
+        "Preference must be 'Client', 'Supplier', or 'Both'",
         "error"
       );
       return;
     }
 
-    if (updatedClientData.supplier && finalPreference !== "Supplier") {
+    if (updatedClientData.supplier && finalPreference !== "Supplier" && finalPreference !== "Both") {
       responseHandler(
         res,
         400,
-        "Supplier fields can only be set for Supplier preference",
+        "Supplier fields can only be set for Supplier or Both preference",
         "error"
       );
       return;
     }
 
-    if (updatedClientData.deliveryAddress && finalPreference !== "Client") {
+    if (updatedClientData.deliveryAddress && finalPreference !== "Client" && finalPreference !== "Both") {
       responseHandler(
         res,
         400,
-        "Delivery address can only be set for Client preference",
+        "Delivery address can only be set for Client or Both preference",
         "error"
       );
       return;
@@ -1389,11 +1656,7 @@ export const updateClient = async (
       }
 
       if (supplier.creditLimitDays !== undefined) {
-        if (
-          !["0", "1", "7", "14", "30", "60", "90"].includes(
-            supplier.creditLimitDays.toString()
-          )
-        ) {
+        if (!VALID_CREDIT_PERIODS.includes(Number(supplier.creditLimitDays))) {
           responseHandler(
             res,
             400,
@@ -1404,7 +1667,6 @@ export const updateClient = async (
         }
       }
 
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const emailFields = [
         supplier.invoiceEmail,
         supplier.returnToSupplierEmail,
@@ -1413,7 +1675,7 @@ export const updateClient = async (
         supplier.deliveryDelayIssueEmail,
       ].filter((email) => email !== undefined && email !== "");
       const invalidEmails = emailFields.filter(
-        (email) => !emailRegex.test(email.trim())
+        (email) => !EMAIL_REGEX.test(email.trim())
       );
       if (invalidEmails.length > 0) {
         responseHandler(
@@ -1435,8 +1697,6 @@ export const updateClient = async (
       "createdBy",
       "firstName lastName companyName companyReferenceNumber"
     );
-
-    console.log("updateClient - Updated client:", { clientId, client });
 
     if (!client || !client.clientName || !client.clientId) {
       console.warn("updateClient - Invalid client data:", client);
@@ -1489,6 +1749,8 @@ export const updateClient = async (
               (client as any).createdBy.companyReferenceNumber || "",
           }
         : null,
+      createdAt: client.createdAt ? client.createdAt.toISOString() : undefined,
+      updatedAt: client.updatedAt ? client.updatedAt.toISOString() : undefined,
     };
 
     responseHandler(
@@ -1503,6 +1765,7 @@ export const updateClient = async (
       message: error.message,
       stack: error.stack,
       body: req.body,
+      params: req.params,
       validationErrors: error.errors || null,
     });
     if (error.name === "ValidationError") {
@@ -1512,7 +1775,6 @@ export const updateClient = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-
 export const deleteClient = async (
   req: Request,
   res: Response
@@ -1609,46 +1871,173 @@ export const deleteClient = async (
   }
 };
 
+// export const getProductByClientId = async (
+//   req: Request,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     const { userId } = req;
+//     const { clientId } = req.params;
+//     const page = parseInt(req.query.page as string) || 1;
+//     const limit = parseInt(req.query.limit as string) || 10;
+//     console.log(clientId);
+//     // Validate inputs
+//     if (!userId || !Types.ObjectId.isValid(userId)) {
+//       responseHandler(res, 400, "Invalid or missing userId", "error");
+//       return;
+//     }
+//     // if (!clientId || !Types.ObjectId.isValid(clientId as string)) {
+//     //   responseHandler(
+//     //     res,
+//     //     400,
+//     //     "Invalid or missing clientId; must be a valid ObjectId",
+//     //     "error"
+//     //   );
+//     //   return;
+//     // }
+
+//     // Convert clientId to ObjectId
+//     // const clientObjectId = new Types.ObjectId(clientId as string);
+
+//     // Verify client exists
+//     const client = await Client.findOne({ clientId }).select("_id").lean();
+//     if (!client) {
+//       responseHandler(res, 404, "Client not found", "error");
+//       return;
+//     }
+
+//     // Aggregation pipeline
+//     const pipeline = [
+//       {
+//         $match: {
+//           clientId,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "adminproducts",
+//           localField: "adminProductId",
+//           foreignField: "_id",
+//           as: "adminProduct",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$adminProduct",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: { $toString: "$_id" },
+//           adminProductId: { $toString: "$adminProductId" },
+//           adminProductName: { $ifNull: ["$adminProduct.productName", null] },
+//           size: 1,
+//           color: { $ifNull: ["$color", null] },
+//           vat: { $ifNull: ["$vat", null] },
+//           sellBy: 1,
+//           sellByQuantity: { $ifNull: ["$sellByQuantity", null] },
+//           shelfLife: { $ifNull: ["$shelfLife", null] },
+//           season: { $ifNull: ["$season", []] },
+//           month: { $ifNull: ["$month", []] },
+//           countryOfOrigin: { $ifNull: ["$countryOfOrigin", ""] },
+//           variety: { $ifNull: ["$variety", ""] },
+//           createdAt: {
+//             $cond: [
+//               { $ne: ["$createdAt", null] },
+//               { $toString: "$createdAt" },
+//               null,
+//             ],
+//           },
+//           updatedAt: {
+//             $cond: [
+//               { $ne: ["$updatedAt", null] },
+//               { $toString: "$updatedAt" },
+//               null,
+//             ],
+//           },
+//         },
+//       },
+//     ];
+
+//     const options = {
+//       page,
+//       limit,
+//       sort: { createdAt: -1 },
+//       customLabels: {
+//         docs: "products",
+//         totalDocs: "totalProducts",
+//       },
+//     };
+
+//     const result = await (Inventory as any).aggregatePaginate(
+//       pipeline,
+//       options
+//     );
+// console.log(result)
+//     responseHandler(
+//       res,
+//       200,
+//       "Products fetched successfully",
+//       "success",
+//       result
+//     );
+//   } catch (error: any) {
+//     console.error("getProductByClientId - Error:", {
+//       message: error.message,
+//       stack: error.stack,
+//       userId: req.userId,
+//       clientId: req.query.clientId,
+//     });
+//     responseHandler(
+//       res,
+//       error.message.includes("not found") ? 404 : 500,
+//       error.message || "Internal server error",
+//       "error"
+//     );
+//   }
+// };
+
+
 export const getProductByClientId = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const { userId } = req;
-    const { clientId } = req.params;
+    const { clientId } = req.params; // This is the string clientId (e.g., CLIENT-001)
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    console.log(clientId);
+
     // Validate inputs
     if (!userId || !Types.ObjectId.isValid(userId)) {
       responseHandler(res, 400, "Invalid or missing userId", "error");
       return;
     }
-    // if (!clientId || !Types.ObjectId.isValid(clientId as string)) {
-    //   responseHandler(
-    //     res,
-    //     400,
-    //     "Invalid or missing clientId; must be a valid ObjectId",
-    //     "error"
-    //   );
-    //   return;
-    // }
+    if (!clientId || typeof clientId !== "string" || !clientId.startsWith("CLIENT-")) {
+      responseHandler(
+        res,
+        400,
+        "Invalid or missing clientId; must be a string starting with 'CLIENT-'",
+        "error"
+      );
+      return;
+    }
 
-    // Convert clientId to ObjectId
-    // const clientObjectId = new Types.ObjectId(clientId as string);
-
-    // Verify client exists
+    // Find the client by clientId to get the ObjectId
     const client = await Client.findOne({ clientId }).select("_id").lean();
     if (!client) {
       responseHandler(res, 404, "Client not found", "error");
       return;
     }
 
+    const clientObjectId = client._id; // Get the ObjectId of the client
+
     // Aggregation pipeline
     const pipeline = [
       {
         $match: {
-          clientId,
+          clientId: new Types.ObjectId(clientObjectId), // Match the ObjectId
         },
       },
       {
@@ -1669,7 +2058,7 @@ export const getProductByClientId = async (
         $project: {
           _id: { $toString: "$_id" },
           adminProductId: { $toString: "$adminProductId" },
-          adminProductName: { $ifNull: ["$adminProduct.name", null] },
+          adminProductName: { $ifNull: ["$adminProduct.productName", null] },
           size: 1,
           color: { $ifNull: ["$color", null] },
           vat: { $ifNull: ["$vat", null] },
@@ -1708,10 +2097,7 @@ export const getProductByClientId = async (
       },
     };
 
-    const result = await (Inventory as any).aggregatePaginate(
-      pipeline,
-      options
-    );
+    const result = await (Inventory as any).aggregatePaginate(pipeline, options);
 
     responseHandler(
       res,
@@ -1725,7 +2111,7 @@ export const getProductByClientId = async (
       message: error.message,
       stack: error.stack,
       userId: req.userId,
-      clientId: req.query.clientId,
+      clientId: req.params.clientId,
     });
     responseHandler(
       res,
