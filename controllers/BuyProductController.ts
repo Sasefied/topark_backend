@@ -30,21 +30,9 @@ const searchBuyProducts = async (req: Request, res: Response) => {
       });
     }
 
-    const myOfflineClient = await Client.find({ createdBy: req.userId })
-      .select("_id")
-      .lean();
-
     const allowedClientIds = myClient?.client?.map(
-      (client: any) => client.userId
+      (client: any) => client.clientId
     );
-
-    if (myOfflineClient && myOfflineClient.length > 0) {
-      myOfflineClient.forEach((client) => {
-        if (!allowedClientIds.includes(client._id.toString())) {
-          allowedClientIds.push(client._id.toString());
-        }
-      });
-    }
 
     console.log("allowedClientIds:", allowedClientIds);
     console.log("userId", req.userId);
@@ -64,7 +52,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
         $lookup: {
           from: "clients",
           localField: "clientId",
-          foreignField: "userId",
+          foreignField: "_id",
           as: "client",
         },
       },

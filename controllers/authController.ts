@@ -12,6 +12,7 @@ import Team from "../schemas/Team";
 import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import { BadRequestError, NotFoundError } from "../utils/errors";
+import { Counter } from "./ClientDetails";
 
 // JWT Secret and Expiration Configuration
 const JWT_SECRET: Secret = config.JWT_SECRET || "default-secret";
@@ -122,6 +123,38 @@ interface SignupError extends Error {
 //   }
 // };
 
+const getNextClientId = async (): Promise<string> => {
+  // Find the highest existing clientId in the clients collection
+  const lastClient = await Client.findOne().sort({ clientId: -1 }).lean();
+  let maxSequence = 0;
+  if (
+    lastClient &&
+    lastClient.clientId &&
+    lastClient.clientId.startsWith("CLIENT-")
+  ) {
+    const lastNumber = parseInt(lastClient.clientId.replace("CLIENT-", ""), 10);
+    if (!isNaN(lastNumber)) {
+      maxSequence = lastNumber;
+    }
+  }
+
+  // Synchronize the counters collection to ensure sequence is at least maxSequence + 1
+  await Counter.findOneAndUpdate(
+    { _id: "clientId" },
+    { $max: { sequence: maxSequence + 1 } },
+    { upsert: true }
+  );
+
+  // Increment the sequence to get the next clientId
+  const counter = await Counter.findOneAndUpdate(
+    { _id: "clientId" },
+    { $inc: { sequence: 1 } },
+    { new: true, upsert: true }
+  );
+
+  return `CLIENT-${String(counter.sequence).padStart(3, "0")}`;
+};
+
 export const signup = async (req: Request, res: Response): Promise<void> => {
   const {
     firstName,
@@ -143,57 +176,68 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
 
     // Input validations
     if (!firstName || !lastName) {
-      const error: SignupError = new Error('First name and last name are required');
+      const error: SignupError = new Error(
+        "First name and last name are required"
+      );
       error.status = 400;
-      error.code = 'MISSING_NAME';
+      error.code = "MISSING_NAME";
       throw error;
     }
 
     if (!companyName) {
-      const error: SignupError = new Error('Company name is required');
+      const error: SignupError = new Error("Company name is required");
       error.status = 400;
-      error.code = 'MISSING_COMPANY_NAME';
+      error.code = "MISSING_COMPANY_NAME";
       throw error;
     }
 
     if (!companyReferenceNumber) {
-      const error: SignupError = new Error('Company Reference Number is required');
+      const error: SignupError = new Error(
+        "Company Reference Number is required"
+      );
       error.status = 400;
-      error.code = 'MISSING_COMPANY_REF';
+      error.code = "MISSING_COMPANY_REF";
       throw error;
     }
 
     if (!consentGiven) {
-      const error: SignupError = new Error('Consent is required to create an account');
+      const error: SignupError = new Error(
+        "Consent is required to create an account"
+      );
       error.status = 400;
-      error.code = 'MISSING_CONSENT';
+      error.code = "MISSING_CONSENT";
       throw error;
     }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail) || (normalizedCompanyEmail && !emailRegex.test(normalizedCompanyEmail))) {
-      const error: SignupError = new Error('Invalid email format');
+    if (
+      !emailRegex.test(normalizedEmail) ||
+      (normalizedCompanyEmail && !emailRegex.test(normalizedCompanyEmail))
+    ) {
+      const error: SignupError = new Error("Invalid email format");
       error.status = 400;
-      error.code = 'INVALID_EMAIL';
+      error.code = "INVALID_EMAIL";
       throw error;
     }
 
     // Check for existing company reference number
     const existingCompanyRef = await User.findOne({ companyReferenceNumber });
     if (existingCompanyRef) {
-      const error: SignupError = new Error('Company Reference Number already exists');
+      const error: SignupError = new Error(
+        "Company Reference Number already exists"
+      );
       error.status = 409;
-      error.code = 'COMPANY_REF_EXISTS';
+      error.code = "COMPANY_REF_EXISTS";
       throw error;
     }
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
-      const error: SignupError = new Error('Email already registered');
+      const error: SignupError = new Error("Email already registered");
       error.status = 409;
-      error.code = 'EMAIL_EXISTS';
+      error.code = "EMAIL_EXISTS";
       throw error;
     }
 
@@ -201,10 +245,10 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!passwordStrengthRegex.test(password)) {
       const error: SignupError = new Error(
-        'Password must include uppercase, lowercase, number, and be at least 8 characters'
+        "Password must include uppercase, lowercase, number, and be at least 8 characters"
       );
       error.status = 400;
-      error.code = 'WEAK_PASSWORD';
+      error.code = "WEAK_PASSWORD";
       throw error;
     }
 
@@ -218,47 +262,48 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       email: normalizedEmail,
       password, // will be hashed by User schema pre-save hook
       consentGiven: !!consentGiven,
-      roles: ['Admin'],
+      roles: ["Admin"],
     });
 
     // Save user
     await user.save();
 
     // Create client record
-    const existingClientEmail = await Client.findOne({ clientEmail: normalizedEmail });
+    const existingClientEmail = await Client.findOne({
+      clientEmail: normalizedEmail,
+    });
     let newClient;
     if (!existingClientEmail) {
       newClient = new Client({
         userId: user._id,
-        clientId: companyReferenceNumber,
+        clientId: await getNextClientId(),
         clientName: `${firstName} ${lastName}`.trim(),
         registeredName: companyName,
         clientEmail: normalizedEmail,
+        companyReferenceNumber
       });
       await newClient.save();
     }
 
-
     res.status(201).json({
-      message: 'User registered successfully',
+      message: "User registered successfully",
       userId: user._id,
       email: user.email,
       skippedClientCreation: !!existingClientEmail,
     });
-
   } catch (error: any) {
-    console.error('Signup Error:', {
+    console.error("Signup Error:", {
       message: error.message,
       code: error.code,
       stack: error.stack,
     });
 
     const status = error.status || 500;
-    const message = error.code ? error.message : 'Internal server error';
+    const message = error.code ? error.message : "Internal server error";
     res.status(status).json({
       error: {
         message,
-        code: error.code || 'INTERNAL_ERROR',
+        code: error.code || "INTERNAL_ERROR",
       },
     });
   }
@@ -311,13 +356,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     // Check if user is part of any team (non-admins only)
     if (!user.roles.includes("Admin")) {
       const teamCheck = await Team.findOne({
-        $or: [
-          { "members.user": user._id },
-          { "members.email": user.email },
-        ],
+        $or: [{ "members.user": user._id }, { "members.email": user.email }],
       });
       if (!teamCheck) {
-        console.log("login - User not part of any team:", { userId: user._id, email });
+        console.log("login - User not part of any team:", {
+          userId: user._id,
+          email,
+        });
         responseHandler(
           res,
           403,
@@ -754,7 +799,7 @@ export const getUserProfile = asyncHandler(
           _id: 1,
           email: 1,
           firstName: 1,
-           roles: 1,
+          roles: 1,
           // lastName: 1,
           companyName: 1,
 
@@ -870,66 +915,108 @@ export const deleteUserProfile = asyncHandler(
     }
 
     // Helper performing cascade with optional session
-    const cascadeDelete = async (user: any, session?: mongoose.ClientSession) => {
+    const cascadeDelete = async (
+      user: any,
+      session?: mongoose.ClientSession
+    ) => {
       const isAdmin = Array.isArray(user.roles) && user.roles.includes("Admin");
       let deletedTeamsCount = 0;
       let deletedMembersCount = 0;
 
       if (isAdmin) {
-        const teamQuery = Team.find({ createdBy: user._id }).select("_id members").lean();
-        const teams = session ? await teamQuery.session(session) : await teamQuery;
+        const teamQuery = Team.find({ createdBy: user._id })
+          .select("_id members")
+          .lean();
+        const teams = session
+          ? await teamQuery.session(session)
+          : await teamQuery;
         if (teams.length > 0) {
           const teamIds = teams.map((t: any) => t._id);
           const memberUserIds: string[] = [];
-            teams.forEach((t: any) => {
-            (t.members || []).forEach((m: any) => { if (m.user) memberUserIds.push(m.user.toString()); });
+          teams.forEach((t: any) => {
+            (t.members || []).forEach((m: any) => {
+              if (m.user) memberUserIds.push(m.user.toString());
+            });
           });
           if (memberUserIds.length > 0 || teamIds.length > 0) {
             const orFilters: any[] = [];
-            if (memberUserIds.length > 0) orFilters.push({ _id: { $in: memberUserIds } });
-            if (teamIds.length > 0) orFilters.push({ teamId: { $in: teamIds } });
+            if (memberUserIds.length > 0)
+              orFilters.push({ _id: { $in: memberUserIds } });
+            if (teamIds.length > 0)
+              orFilters.push({ teamId: { $in: teamIds } });
             const baseFilter: any = { _id: { $ne: user._id } };
             if (orFilters.length > 0) baseFilter.$or = orFilters;
             const userDeleteExec = User.deleteMany(baseFilter);
-            const userDeleteResult = session ? await userDeleteExec.session(session) : await userDeleteExec;
+            const userDeleteResult = session
+              ? await userDeleteExec.session(session)
+              : await userDeleteExec;
             deletedMembersCount = userDeleteResult.deletedCount || 0;
           }
           const teamDeleteExec = Team.deleteMany({ _id: { $in: teamIds } });
-          const teamDeleteResult = session ? await teamDeleteExec.session(session) : await teamDeleteExec;
+          const teamDeleteResult = session
+            ? await teamDeleteExec.session(session)
+            : await teamDeleteExec;
           deletedTeamsCount = teamDeleteResult.deletedCount || 0;
         }
-        const clientDeleteExec = Client.deleteMany({ $or: [ { userId: user._id }, { clientEmail: user.email } ] });
-        if (session) await clientDeleteExec.session(session); else await clientDeleteExec;
+        const clientDeleteExec = Client.deleteMany({
+          $or: [{ userId: user._id }, { clientEmail: user.email }],
+        });
+        if (session) await clientDeleteExec.session(session);
+        else await clientDeleteExec;
 
         const adminObjectId = user._id;
         const collections = [
           { path: "../schemas/BuyOrder", filter: { userId: adminObjectId } },
           { path: "../schemas/SellOrder", filter: { userId: adminObjectId } },
           { path: "../schemas/Order", filter: { userId: adminObjectId } },
-          { path: "../schemas/OrderPayment", filter: { createdBy: adminObjectId } },
-          { path: "../schemas/SellOrderPayment", filter: { createdBy: adminObjectId } },
+          {
+            path: "../schemas/OrderPayment",
+            filter: { createdBy: adminObjectId },
+          },
+          {
+            path: "../schemas/SellOrderPayment",
+            filter: { createdBy: adminObjectId },
+          },
           { path: "../schemas/CreditNote", filter: { userId: adminObjectId } },
           { path: "../schemas/Cashiering", filter: { userId: adminObjectId } },
           { path: "../schemas/Cart", filter: { userId: adminObjectId } },
           { path: "../schemas/Inventory", filter: { userId: adminObjectId } },
           { path: "../schemas/Logistic", filter: { userId: adminObjectId } },
-          { path: "../schemas/MyClient", filter: { userId: adminObjectId.toString() } },
-          { path: "../schemas/ReportedIssue", filter: { userId: adminObjectId } },
+          {
+            path: "../schemas/MyClient",
+            filter: { userId: adminObjectId.toString() },
+          },
+          {
+            path: "../schemas/ReportedIssue",
+            filter: { userId: adminObjectId },
+          },
         ];
         for (const c of collections) {
           try {
             const mod: any = await import(c.path);
             const exec = mod.default.deleteMany(c.filter);
-            if (session) await exec.session(session); else await exec;
+            if (session) await exec.session(session);
+            else await exec;
           } catch (e) {
-            console.warn("Cascade deletion skip (import failed)", c.path, e instanceof Error ? e.message : e);
+            console.warn(
+              "Cascade deletion skip (import failed)",
+              c.path,
+              e instanceof Error ? e.message : e
+            );
           }
         }
       } else {
-        const teamUpdateExec = Team.updateMany({ "members.email": user.email }, { $pull: { members: { email: user.email } } });
-        if (session) await teamUpdateExec.session(session); else await teamUpdateExec;
-        const clientDeleteExec = Client.deleteMany({ $or: [ { userId: user._id }, { clientEmail: user.email } ] });
-        if (session) await clientDeleteExec.session(session); else await clientDeleteExec;
+        const teamUpdateExec = Team.updateMany(
+          { "members.email": user.email },
+          { $pull: { members: { email: user.email } } }
+        );
+        if (session) await teamUpdateExec.session(session);
+        else await teamUpdateExec;
+        const clientDeleteExec = Client.deleteMany({
+          $or: [{ userId: user._id }, { clientEmail: user.email }],
+        });
+        if (session) await clientDeleteExec.session(session);
+        else await clientDeleteExec;
         const memberObjId = user._id;
         const memberCollections = [
           { path: "../schemas/Cart", filter: { userId: memberObjId } },
@@ -946,15 +1033,21 @@ export const deleteUserProfile = asyncHandler(
           try {
             const mod: any = await import(c.path);
             const exec = mod.default.deleteMany(c.filter);
-            if (session) await exec.session(session); else await exec;
+            if (session) await exec.session(session);
+            else await exec;
           } catch (e) {
-            console.warn("Member cascade deletion skip (import failed)", c.path, e instanceof Error ? e.message : e);
+            console.warn(
+              "Member cascade deletion skip (import failed)",
+              c.path,
+              e instanceof Error ? e.message : e
+            );
           }
         }
       }
 
       const userDeleteExec = User.deleteOne({ _id: user._id });
-      if (session) await userDeleteExec.session(session); else await userDeleteExec;
+      if (session) await userDeleteExec.session(session);
+      else await userDeleteExec;
       return { isAdmin, deletedTeamsCount, deletedMembersCount };
     };
 
@@ -966,11 +1059,16 @@ export const deleteUserProfile = asyncHandler(
         session.startTransaction();
         usedTransaction = true;
       } catch (txErr: any) {
-        console.warn("Transactions not supported, falling back to non-transactional deletion:", txErr?.message);
+        console.warn(
+          "Transactions not supported, falling back to non-transactional deletion:",
+          txErr?.message
+        );
       }
 
       const userQuery = User.findById(userId);
-      const user = usedTransaction ? await userQuery.session(session) : await userQuery;
+      const user = usedTransaction
+        ? await userQuery.session(session)
+        : await userQuery;
       if (!user) {
         if (usedTransaction) await session!.abortTransaction();
         responseHandler(res, 404, "User not found");
@@ -983,29 +1081,43 @@ export const deleteUserProfile = asyncHandler(
         return;
       }
 
-      const result = await cascadeDelete(user, usedTransaction ? session : undefined);
+      const result = await cascadeDelete(
+        user,
+        usedTransaction ? session : undefined
+      );
       if (usedTransaction) await session!.commitTransaction();
 
-      responseHandler(res, 200, "User profile deleted successfully", "success", {
-        deletedTeams: result.deletedTeamsCount,
-        deletedAssociatedUsers: result.deletedMembersCount,
-        accountType: result.isAdmin ? "admin" : "member",
-        transactional: usedTransaction,
-      });
+      responseHandler(
+        res,
+        200,
+        "User profile deleted successfully",
+        "success",
+        {
+          deletedTeams: result.deletedTeamsCount,
+          deletedAssociatedUsers: result.deletedMembersCount,
+          accountType: result.isAdmin ? "admin" : "member",
+          transactional: usedTransaction,
+        }
+      );
     } catch (err) {
       if (usedTransaction && session) {
-        try { await session.abortTransaction(); } catch {}
+        try {
+          await session.abortTransaction();
+        } catch {}
       }
       console.error("deleteUserProfile - Error:", err);
-      responseHandler(res, 500, "Internal server error during account deletion");
+      responseHandler(
+        res,
+        500,
+        "Internal server error during account deletion"
+      );
     } finally {
       if (session) await session.endSession();
     }
   }
 );
 
-export const getUsers = asyncHandler(
-async (req: Request, res: Response) => {
+export const getUsers = asyncHandler(async (req: Request, res: Response) => {
   try {
     const users = await User.find().select("_id email roles teamId");
     res.status(200).json({ status: "success", data: users });

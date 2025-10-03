@@ -38,7 +38,7 @@ const getAllLogisticOrders = async (req: Request, res: Response) => {
         $lookup: {
           from: "clients",
           localField: "clientId",
-          foreignField: "userId",
+          foreignField: "_id",
           as: "client",
         },
       },
@@ -418,23 +418,27 @@ const receivedOkLogisticOrderItem = asyncHandler(
       // }
 
        await Inventory.create(
-          [
-            {
-              userId: req.userId,
-              clientId: req.userId,
-              adminProductId: inventory.adminProductId,
-              // grade: inventory.,
-              pricePerUnit: orderItem.price,
-              qtyInStock: orderItem.quantity,
-              qtyIncoming: orderItem.quantity,
-              sourceCountry: inventory.countryOfOrigin,
-              // ccy: inventory.ccy,
-              buyingPrice: orderItem.price,
-              tradingPrice: orderItem.price,
-            },
-          ],
-          { session }
-        );
+         [
+           {
+             userId: req.userId,
+             clientId: inventory.clientId,
+             adminProductId: inventory.adminProductId,
+             // grade: inventory.,
+             pricePerUnit: orderItem.price,
+             qtyInStock: orderItem.quantity,
+             qtyIncoming: orderItem.quantity,
+             sourceCountry: inventory.countryOfOrigin,
+             // ccy: inventory.ccy,
+             buyingPrice: orderItem.price,
+             tradingPrice: orderItem.price,
+             countryOfOrigin: inventory.countryOfOrigin,
+             shelfLife: inventory.shelfLife,
+             sellBy: inventory.sellBy,
+             size: inventory.size,
+           },
+         ],
+         { session }
+       );
 
       await OrderItem.updateOne(
         { _id: orderItemId },
