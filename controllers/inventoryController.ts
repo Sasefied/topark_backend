@@ -568,9 +568,9 @@ const updateInventoryById = asyncHandler(
     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
       throw new BadRequestError("Invalid adminProductId format");
     }
-    if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
-      throw new BadRequestError("Invalid clientId format");
-    }
+    // if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
+    //   throw new BadRequestError("Invalid clientId format");
+    // }
 
     // Validate referenced documents
     const product = await AdminProduct.findById(adminProductId);

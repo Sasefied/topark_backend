@@ -337,7 +337,7 @@ const getAllBuyOrders = async (req: Request, res: Response): Promise<void> => {
         $lookup: {
           from: "clients",
           localField: "inventory.clientId",
-          foreignField: "userId",
+          foreignField: "_id",
           as: "clientDetails",
         },
       },
