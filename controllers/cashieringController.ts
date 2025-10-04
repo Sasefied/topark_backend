@@ -528,7 +528,18 @@ async function getCashiersByUserId(userId: string) {
     },
   ]);
 
-  return teams; // array of cashiers
+  return teams;
+}
+
+async function getAdminIdByCashierId(
+  cashierId: string
+): Promise<string | null> {
+  const team = await Team.findOne(
+    { "members._id": new Types.ObjectId(cashierId) },
+    { createdBy: 1, _id: 0 } // only fetch createdBy
+  ).lean();
+
+  return team ? team.createdBy.toString() : null;
 }
 
 const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
@@ -542,20 +553,22 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
     const userObjectId = new Types.ObjectId(req.userId);
     console.log("user id:", userObjectId);
 
-    const cashiers = await getCashiersByUserId(req.userId);
-
-    console.log("CASHIERS", cashiers);
-
     const teamId = req.userTeamId;
 
-    console.log("TEAMID:", teamId);
+    const team = await Team.findOne({
+      _id: teamId,
+    });
 
     let matchCondition: any = {};
-    if (teamId) {
-      matchCondition = { teamId };
-    } else {
+    // check if current user is admin (created the team)
+    if (team && team.createdBy.toString() === userObjectId.toString()) {
       matchCondition = { userId: userObjectId };
+      console.log("is admin");
+    } else {
+      console.log("is not admin");
+      matchCondition = { userId: team?.createdBy };
     }
+    console.log("matching conditions:::", matchCondition);
 
     const combinedAggregate = Order.aggregate([
       // Base: Buy Orders
