@@ -544,7 +544,7 @@ async function getAdminIdByCashierId(
 
 const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, cashierId = req.userId } = req.query;
 
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
       return responseHandler(res, 401, "Invalid or missing userId", "error");
@@ -562,7 +562,11 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
     let matchCondition: any = {};
     // check if current user is admin (created the team)
     if (team && team.createdBy.toString() === userObjectId.toString()) {
-      matchCondition = { userId: userObjectId };
+      if (cashierId === req.userId) {
+        matchCondition = { userId: userObjectId };
+      } else {
+        matchCondition = { userId: new Types.ObjectId(cashierId as string) };
+      }
       console.log("is admin");
     } else {
       console.log("is not admin");
