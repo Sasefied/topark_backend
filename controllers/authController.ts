@@ -12,7 +12,6 @@ import Team from "../schemas/Team";
 import mongoose from "mongoose";
 import asyncHandler from "express-async-handler";
 import { BadRequestError, NotFoundError } from "../utils/errors";
-import { Counter } from "./ClientDetails";
 
 // JWT Secret and Expiration Configuration
 const JWT_SECRET: Secret = config.JWT_SECRET || "default-secret";
@@ -138,21 +137,9 @@ const getNextClientId = async (): Promise<string> => {
     }
   }
 
-  // Synchronize the counters collection to ensure sequence is at least maxSequence + 1
-  await Counter.findOneAndUpdate(
-    { _id: "clientId" },
-    { $max: { sequence: maxSequence + 1 } },
-    { upsert: true }
-  );
+  const nextSequence = maxSequence + 1;
 
-  // Increment the sequence to get the next clientId
-  const counter = await Counter.findOneAndUpdate(
-    { _id: "clientId" },
-    { $inc: { sequence: 1 } },
-    { new: true, upsert: true }
-  );
-
-  return `CLIENT-${String(counter.sequence).padStart(3, "0")}`;
+  return `CLIENT-${String(nextSequence).padStart(3, "0")}`;
 };
 
 export const signup = async (req: Request, res: Response): Promise<void> => {
@@ -280,7 +267,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         clientName: `${firstName} ${lastName}`.trim(),
         registeredName: companyName,
         clientEmail: normalizedEmail,
-        companyReferenceNumber
+        companyReferenceNumber,
       });
       await newClient.save();
     }
