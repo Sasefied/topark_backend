@@ -621,83 +621,9 @@ export const addClientToUser = async (
   }
 };
 
-// export const addClientToUser = async (
-//   req: Request,
-//   res: Response
-// ): Promise<void> => {
-//   try {
-//     const { clientId, client: clientData } = req.body;
-//     const userId = req.userId;
 
-//     console.log("addClientToUser - Request body:", req.body, req.userId);
 
-//     // Basic validation
-//     if (!userId || !clientId || !Array.isArray(clientData)) {
-//       responseHandler(res, 400, "Missing required fields", "error");
-//       return;
-//     }
 
-//     if (!Types.ObjectId.isValid(clientId)) {
-//       responseHandler(res, 400, "Invalid clientId", "error");
-//       return;
-//     }
-
-//     // Optional: validate that client exists
-//     const existingClient = await Client.findById(clientId);
-//     if (!existingClient) {
-//       responseHandler(res, 404, "Client not found", "error");
-//       return;
-//     }
-
-//     // Validate each item in clientData
-//     const validClientEntries = clientData
-//       .filter(
-//         (entry) =>
-//           Types.ObjectId.isValid(entry.userId) &&
-//           Types.ObjectId.isValid(entry.clientId)
-//       )
-//       .map((entry) => ({
-//         userId: new Types.ObjectId(entry.userId),
-//         clientId: new Types.ObjectId(entry.clientId),
-//       }));
-
-//     if (validClientEntries.length === 0) {
-//       responseHandler(res, 400, "No valid client entries", "error");
-//       return;
-//     }
-
-//     // Update MyClient document
-//     const updatedMyClient = await MyClient.findOneAndUpdate(
-//       { userId: userId.toString() },
-//       {
-//         $addToSet: {
-//           clientId: new Types.ObjectId(clientId), // Add to flat array
-//           client: { $each: validClientEntries }, // Add to nested array
-//         },
-//       },
-//       { upsert: true, new: true }
-//     )
-//       .populate("clientId")
-//       .populate("client.clientId")
-//       .populate("client.userId");
-
-//     responseHandler(
-//       res,
-//       200,
-//       "Client(s) added successfully",
-//       "success",
-//       updatedMyClient
-//     );
-//   } catch (error: any) {
-//     console.error("addClientToUser - Error:", {
-//       message: error.message,
-//       stack: error.stack,
-//     });
-//     responseHandler(res, 500, "Internal server error", "error");
-//   }
-// };
-
-// Define a type for the populated createdBy field
 interface PopulatedCreatedBy {
   _id: string;
   firstName: string;
@@ -1256,262 +1182,7 @@ export const getClientById = async (
   }
 };
 
-// export const updateClient = async (
-//   req: Request,
-//   res: Response
-// ): Promise<void> => {
-//   try {
-//     const { clientId } = req.params;
-//     const updatedClientData: Partial<IClient> = req.body;
-//     console.log(clientId, "...")
-//     // Prevent updating clientId
-//     delete updatedClientData.clientId;
 
-//     const existingClient = await Client.findOne({ clientId });
-//     if (!existingClient) {
-//       responseHandler(res, 404, "Client not found", "error");
-//       return;
-//     }
-
-//     const finalPreference =
-//       updatedClientData.preference || existingClient.preference;
-
-//     // Validate workanniversary format
-//     if (updatedClientData.workanniversary) {
-//       updatedClientData.workanniversary = new Date(
-//         updatedClientData.workanniversary
-//       );
-//       if (isNaN(updatedClientData.workanniversary.getTime())) {
-//         responseHandler(
-//           res,
-//           400,
-//           "Invalid workanniversary date format",
-//           "error"
-//         );
-//         return;
-//       }
-//     }
-
-//     // Validate creditLimit if provided
-//     if (updatedClientData.creditLimit) {
-//       if (
-//         typeof updatedClientData.creditLimit.amount !== "number" ||
-//         isNaN(updatedClientData.creditLimit.amount) ||
-//         updatedClientData.creditLimit.amount < 0
-//       ) {
-//         responseHandler(
-//           res,
-//           400,
-//           "Invalid creditLimit.amount. Must be a valid non-negative number.",
-//           "error"
-//         );
-//         return;
-//       }
-//       if (
-//         updatedClientData.creditLimit.period !== undefined &&
-//         !["0", "1", "7", "14", "30", "60", "90"].includes(
-//           updatedClientData.creditLimit.period.toString()
-//         )
-//       ) {
-//         responseHandler(
-//           res,
-//           400,
-//           "Credit limit period must be one of: 0, 1, 7, 14, 30, 60, 90",
-//           "error"
-//         );
-//         return;
-//       }
-//       updatedClientData.creditLimit.period =
-//         updatedClientData.creditLimit.period ?? 0;
-//     }
-
-//     // Validate preference if provided
-//     if (
-//       updatedClientData.preference &&
-//       !["Client", "Supplier"].includes(updatedClientData.preference)
-//     ) {
-//       responseHandler(
-//         res,
-//         400,
-//         "Preference must be either 'Client' or 'Supplier'",
-//         "error"
-//       );
-//       return;
-//     }
-
-//     if (updatedClientData.supplier && finalPreference !== "Supplier") {
-//       responseHandler(
-//         res,
-//         400,
-//         "Supplier fields can only be set for Supplier preference",
-//         "error"
-//       );
-//       return;
-//     }
-
-//     if (updatedClientData.deliveryAddress && finalPreference !== "Client") {
-//       responseHandler(
-//         res,
-//         400,
-//         "Delivery address can only be set for Client preference",
-//         "error"
-//       );
-//       return;
-//     }
-
-//     // Unset irrelevant fields based on preference
-//     if (updatedClientData.preference) {
-//       if (updatedClientData.preference === "Client") {
-//         updatedClientData.supplier = undefined;
-//       } else if (updatedClientData.preference === "Supplier") {
-//         updatedClientData.deliveryAddress = undefined;
-//       }
-//     }
-
-//     // Validate supplier if provided
-//     if (updatedClientData.supplier) {
-//       const supplier = updatedClientData.supplier;
-
-//       if (supplier.creditLimitAmount !== undefined) {
-//         if (
-//           typeof supplier.creditLimitAmount !== "number" ||
-//           isNaN(supplier.creditLimitAmount) ||
-//           supplier.creditLimitAmount < 0
-//         ) {
-//           responseHandler(
-//             res,
-//             400,
-//             "Invalid supplier.creditLimitAmount. Must be a valid non-negative number.",
-//             "error"
-//           );
-//           return;
-//         }
-//       }
-
-//       if (supplier.creditLimitDays !== undefined) {
-//         if (
-//           !["0", "1", "7", "14", "30", "60", "90"].includes(
-//             supplier.creditLimitDays.toString()
-//           )
-//         ) {
-//           responseHandler(
-//             res,
-//             400,
-//             "Supplier credit limit days must be one of: 0, 1, 7, 14, 30, 60, 90",
-//             "error"
-//           );
-//           return;
-//         }
-//       }
-
-//       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-//       const emailFields = [
-//         supplier.invoiceEmail,
-//         supplier.returnToSupplierEmail,
-//         supplier.quantityIssueEmail,
-//         supplier.qualityIssueEmail,
-//         supplier.deliveryDelayIssueEmail,
-//       ].filter((email) => email !== undefined && email !== "");
-//       const invalidEmails = emailFields.filter(
-//         (email) => !emailRegex.test(email.trim())
-//       );
-//       if (invalidEmails.length > 0) {
-//         responseHandler(
-//           res,
-//           400,
-//           "One or more supplier email fields have invalid format",
-//           "error"
-//         );
-//         return;
-//       }
-//     }
-
-//     // Find and update the client
-//     const client = await Client.findOneAndUpdate(
-//       { clientId },
-//       updatedClientData,
-//       { new: true, runValidators: true }
-//     ).populate(
-//       "createdBy",
-//       "firstName lastName companyName companyReferenceNumber"
-//     );
-
-//     console.log("updateClient - Updated client:", { clientId, client });
-
-//     if (!client || !client.clientName || !client.clientId) {
-//       console.warn("updateClient - Invalid client data:", client);
-//       responseHandler(res, 404, "Client not found or invalid data", "error");
-//       return;
-//     }
-
-//     // Construct response with all fields including new ones
-//     const clientData = {
-//       _id: client._id.toString(),
-//       userId: client.userId?.toString() || "",
-//       clientId: client.clientId,
-//       clientName: client.clientName,
-//       clientEmail: client.clientEmail,
-//       countryName: client.countryName || "",
-//       registeredName: client.registeredName,
-//       workanniversary: client.workanniversary
-//         ? client.workanniversary.toISOString()
-//         : null,
-//       registeredAddress: client.registeredAddress,
-//       deliveryAddress: client.deliveryAddress,
-//       clientNotes: client.clientNotes,
-//       companyReferenceNumber: client.companyReferenceNumber,
-//       relatedClientIds:
-//         client.relatedClientIds?.map((id) => id.toString()) || [],
-//       creditLimit: {
-//         amount: client.creditLimit?.amount || 0,
-//         period: client.creditLimit?.period || 0,
-//       },
-//       preference: client.preference,
-//       supplier: client.supplier
-//         ? {
-//             creditLimitAmount: client.supplier.creditLimitAmount || 0,
-//             creditLimitDays: client.supplier.creditLimitDays || 0,
-//             invoiceEmail: client.supplier.invoiceEmail || "",
-//             returnToSupplierEmail: client.supplier.returnToSupplierEmail || "",
-//             quantityIssueEmail: client.supplier.quantityIssueEmail || "",
-//             qualityIssueEmail: client.supplier.qualityIssueEmail || "",
-//             deliveryDelayIssueEmail:
-//               client.supplier.deliveryDelayIssueEmail || "",
-//           }
-//         : undefined,
-//       createdBy: client.createdBy
-//         ? {
-//             _id: client.createdBy._id.toString(),
-//             firstName: (client as any).createdBy.firstName || "",
-//             lastName: (client as any).createdBy.lastName || "",
-//             companyName: (client as any).createdBy.companyName || "",
-//             companyReferenceNumber:
-//               (client as any).createdBy.companyReferenceNumber || "",
-//           }
-//         : null,
-//     };
-
-//     responseHandler(
-//       res,
-//       200,
-//       "Client updated successfully",
-//       "success",
-//       clientData
-//     );
-//   } catch (error: any) {
-//     console.error("updateClient - Error:", {
-//       message: error.message,
-//       stack: error.stack,
-//       body: req.body,
-//       validationErrors: error.errors || null,
-//     });
-//     if (error.name === "ValidationError") {
-//       responseHandler(res, 400, `Validation error: ${error.message}`, "error");
-//       return;
-//     }
-//     responseHandler(res, 500, "Internal server error", "error");
-//   }
-// };
 export const updateClient = async (
   req: Request,
   res: Response
@@ -1792,10 +1463,7 @@ export const updateClient = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-export const deleteClient = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const deleteClient = async (req: Request, res: Response): Promise<void> => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -1803,47 +1471,51 @@ export const deleteClient = async (
     const { userId } = req;
     const { clientId } = req.body;
 
+    console.log("Received userId:", userId, "clientId:", clientId);
+
     // Validate inputs
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       throw new Error("Invalid or missing userId");
     }
-    if (
-      !clientId ||
-      typeof clientId !== "string" ||
-      !clientId.startsWith("CLIENT-")
-    ) {
-      throw new Error(
-        "Invalid or missing clientId; must be a string starting with 'CLIENT-'"
-      );
+    if (!clientId || typeof clientId !== "string") {
+      throw new Error("Invalid or missing clientId");
     }
 
-    // Find the client by clientId and userId to ensure it belongs to the user
-    const client = await Client.findOne({
-      clientId,
-      userId: new mongoose.Types.ObjectId(userId),
-    }).session(session);
+    // Find the client
+    const client = await Client.findOne({ clientId }).session(session);
+    console.log("Client query result:", client);
     if (!client) {
-      throw new Error("Client not found or does not belong to the user");
+      throw new Error(`Client with ID ${clientId} not found`);
+    }
+
+    // Check if the authenticated user is the creator or has the client in MyClient
+    const isCreator = client.createdBy?.toString() === userId;
+    const myClient = await MyClient.findOne({
+      userId: userId.toString(),
+      clientId: client._id,
+    }).session(session);
+    if (!isCreator && !myClient) {
+      throw new Error(`Client with ID ${clientId} does not belong to the user`);
     }
 
     const clientObjectId = client._id;
 
     // Delete associated inventory products
-    await Inventory.deleteMany({
+    const inventoryResult = await Inventory.deleteMany({
       clientId: clientObjectId,
     }).session(session);
+    console.log("Deleted inventory products:", inventoryResult);
 
-    // Delete the client from Client collection
+    // Delete the client
     const deleteClientResult = await Client.deleteOne({
       _id: clientObjectId,
-      userId: new mongoose.Types.ObjectId(userId),
     }).session(session);
-
+    console.log("Delete client result:", deleteClientResult);
     if (deleteClientResult.deletedCount === 0) {
       throw new Error("Failed to delete client");
     }
 
-    // Remove client from MyClient.clientId array and MyClient.client array (matching both userId and clientId)
+    // Update MyClient to remove the client
     const updateMyClientResult = await MyClient.findOneAndUpdate(
       { userId: userId.toString() },
       {
@@ -1857,165 +1529,37 @@ export const deleteClient = async (
       },
       { new: true, session }
     );
+    console.log("Update MyClient result:", updateMyClientResult);
 
-    if (!updateMyClientResult) {
-      throw new Error("User or MyClient document not found");
+    // Delete the offline user associated with the client
+    const offlineUser = await User.findById(client.userId).session(session);
+    if (offlineUser && offlineUser.isOfflineUser) {
+      const deleteUserResult = await User.deleteOne({
+        _id: client.userId,
+      }).session(session);
+      console.log("Deleted offline user:", deleteUserResult);
     }
 
     await session.commitTransaction();
     session.endSession();
-
-    responseHandler(
-      res,
-      200,
-      "Client and associated products removed successfully",
-      "success"
-    );
-  } catch (error: any) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("deleteClient - Error:", {
-      message: error.message,
-      stack: error.stack,
-      userId: req.userId,
-      clientId: req.body.clientId,
-    });
-    responseHandler(
-      res,
-      error.message.includes("not found") ? 404 : 400,
-      error.message,
-      "error"
-    );
-  }
+    responseHandler(res, 200, "Client and associated data removed successfully", "success");
+} catch (error: any) {
+await session.abortTransaction();
+session.endSession();
+console.error("deleteClient - Error:", {
+message: error.message,
+stack: error.stack,
+userId: req.userId,
+clientId: req.body.clientId,
+});
+responseHandler(
+res,
+error.message.includes("not found") ? 404 : 400,
+error.message,
+"error"
+);
+}
 };
-
-// export const getProductByClientId = async (
-//   req: Request,
-//   res: Response
-// ): Promise<void> => {
-//   try {
-//     const { userId } = req;
-//     const { clientId } = req.params;
-//     const page = parseInt(req.query.page as string) || 1;
-//     const limit = parseInt(req.query.limit as string) || 10;
-//     console.log(clientId);
-//     // Validate inputs
-//     if (!userId || !Types.ObjectId.isValid(userId)) {
-//       responseHandler(res, 400, "Invalid or missing userId", "error");
-//       return;
-//     }
-//     // if (!clientId || !Types.ObjectId.isValid(clientId as string)) {
-//     //   responseHandler(
-//     //     res,
-//     //     400,
-//     //     "Invalid or missing clientId; must be a valid ObjectId",
-//     //     "error"
-//     //   );
-//     //   return;
-//     // }
-
-//     // Convert clientId to ObjectId
-//     // const clientObjectId = new Types.ObjectId(clientId as string);
-
-//     // Verify client exists
-//     const client = await Client.findOne({ clientId }).select("_id").lean();
-//     if (!client) {
-//       responseHandler(res, 404, "Client not found", "error");
-//       return;
-//     }
-
-//     // Aggregation pipeline
-//     const pipeline = [
-//       {
-//         $match: {
-//           clientId,
-//         },
-//       },
-//       {
-//         $lookup: {
-//           from: "adminproducts",
-//           localField: "adminProductId",
-//           foreignField: "_id",
-//           as: "adminProduct",
-//         },
-//       },
-//       {
-//         $unwind: {
-//           path: "$adminProduct",
-//           preserveNullAndEmptyArrays: true,
-//         },
-//       },
-//       {
-//         $project: {
-//           _id: { $toString: "$_id" },
-//           adminProductId: { $toString: "$adminProductId" },
-//           adminProductName: { $ifNull: ["$adminProduct.productName", null] },
-//           size: 1,
-//           color: { $ifNull: ["$color", null] },
-//           vat: { $ifNull: ["$vat", null] },
-//           sellBy: 1,
-//           sellByQuantity: { $ifNull: ["$sellByQuantity", null] },
-//           shelfLife: { $ifNull: ["$shelfLife", null] },
-//           season: { $ifNull: ["$season", []] },
-//           month: { $ifNull: ["$month", []] },
-//           countryOfOrigin: { $ifNull: ["$countryOfOrigin", ""] },
-//           variety: { $ifNull: ["$variety", ""] },
-//           createdAt: {
-//             $cond: [
-//               { $ne: ["$createdAt", null] },
-//               { $toString: "$createdAt" },
-//               null,
-//             ],
-//           },
-//           updatedAt: {
-//             $cond: [
-//               { $ne: ["$updatedAt", null] },
-//               { $toString: "$updatedAt" },
-//               null,
-//             ],
-//           },
-//         },
-//       },
-//     ];
-
-//     const options = {
-//       page,
-//       limit,
-//       sort: { createdAt: -1 },
-//       customLabels: {
-//         docs: "products",
-//         totalDocs: "totalProducts",
-//       },
-//     };
-
-//     const result = await (Inventory as any).aggregatePaginate(
-//       pipeline,
-//       options
-//     );
-// console.log(result)
-//     responseHandler(
-//       res,
-//       200,
-//       "Products fetched successfully",
-//       "success",
-//       result
-//     );
-//   } catch (error: any) {
-//     console.error("getProductByClientId - Error:", {
-//       message: error.message,
-//       stack: error.stack,
-//       userId: req.userId,
-//       clientId: req.query.clientId,
-//     });
-//     responseHandler(
-//       res,
-//       error.message.includes("not found") ? 404 : 500,
-//       error.message || "Internal server error",
-//       "error"
-//     );
-//   }
-// };
-
 export const getProductByClientId = async (
   req: Request,
   res: Response
@@ -2080,6 +1624,9 @@ export const getProductByClientId = async (
           _id: { $toString: "$_id" },
           adminProductId: { $toString: "$adminProductId" },
           adminProductName: { $ifNull: ["$adminProduct.productName", null] },
+          productCode: {$ifNull: ["$adminProduct.productCode", null]},
+          alias:  { $ifNull: ["$adminProduct.productAlias", null] },
+          productType: { $ifNull: ["$adminProduct.productType", null] },
           size: 1,
           color: { $ifNull: ["$color", null] },
           vat: { $ifNull: ["$vat", null] },

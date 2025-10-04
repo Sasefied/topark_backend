@@ -147,6 +147,7 @@ const createBulkBuyOrders = async (
           color,
           quantity,
           price,
+          ExtraCostprice,
           ccy,
           deliveryDate,
           inventoryId,
@@ -233,6 +234,7 @@ const createBulkBuyOrders = async (
           inventoryId: new Types.ObjectId(inventoryId),
           quantity,
           price,
+          ExtraCostprice,
           deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
           productName,
           supplierName,
@@ -252,6 +254,7 @@ const createBulkBuyOrders = async (
           color,
           quantity,
           price,
+          ExtraCostprice,
           ccy: ccy || "GBP",
           deliveryDate: newOrderItem.deliveryDate,
           inventoryId,
@@ -443,205 +446,6 @@ const deleteBuyOrder = async (
   }
 };
 
-// const updateBuyOrder = async (
-//   req: AuthRequest,
-//   res: Response
-// ): Promise<void> => {
-//   try {
-//     const { buyOrderId } = req.params;
-//     const { quantity, deliveryDate, price, orderStatus } = req.body;
-
-//     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
-//       return responseHandler(
-//         res,
-//         401,
-//         `Unauthorized: Invalid userId: ${req.userId}`,
-//         "error"
-//       );
-//     }
-
-//     if (!Types.ObjectId.isValid(buyOrderId)) {
-//       return responseHandler(
-//         res,
-//         400,
-//         `Invalid buyOrderId: ${buyOrderId}`,
-//         "error"
-//       );
-//     }
-
-//     if (
-//       quantity !== undefined &&
-//       (typeof quantity !== "number" || quantity <= 0)
-//     ) {
-//       return responseHandler(
-//         res,
-//         400,
-//         `Invalid quantity: ${quantity}`,
-//         "error"
-//       );
-//     }
-//     if (deliveryDate && !isValidDate(deliveryDate)) {
-//       return responseHandler(
-//         res,
-//         400,
-//         `Invalid deliveryDate: ${deliveryDate}`,
-//         "error"
-//       );
-//     }
-
-//     if (price !== undefined && (typeof price !== "number" || price < 0)) {
-//       return responseHandler(res, 400, `Invalid price: ${price}`, "error");
-//     }
-//     if (
-//       orderStatus &&
-//       !["Pending", "Confirmed", "Delivered"].includes(orderStatus)
-//     ) {
-//       return responseHandler(
-//         res,
-//         400,
-//         `Invalid orderStatus: ${orderStatus}`,
-//         "error"
-//       );
-//     }
-
-//     // Check if the buyOrderId corresponds to a CartItem
-//     const cart = await Cart.findOne({ userId: new Types.ObjectId(req.userId) });
-//     if (cart) {
-//       const cartItem = await CartItem.findOne({
-//         _id: new Types.ObjectId(buyOrderId),
-//         cartId: cart._id,
-//       });
-
-//       if (cartItem) {
-//         // Update CartItem
-//         const cartItemUpdates: Partial<ICartItem> = {};
-//         if (quantity !== undefined) cartItemUpdates.quantity = quantity;
-//         if (price !== undefined) cartItemUpdates.price = price;
-//         if (deliveryDate !== undefined)
-//           cartItemUpdates.deliveryDate = new Date(deliveryDate);
-
-//         const updatedCartItem = await CartItem.findOneAndUpdate(
-//           { _id: new Types.ObjectId(buyOrderId), cartId: cart._id },
-//           { $set: cartItemUpdates },
-//           { new: true }
-//         );
-
-//         if (updatedCartItem) {
-//           responseHandler(
-//             res,
-//             200,
-//             "Cart item updated successfully",
-//             "success",
-//             {
-//               _id: updatedCartItem._id,
-//               quantity: updatedCartItem.quantity,
-//               price: updatedCartItem.price,
-//               deliveryDate: updatedCartItem.deliveryDate,
-//             }
-//           );
-//           return;
-//         }
-//       }
-//     }
-
-//     // If not a CartItem, try updating an Order/OrderItem
-//     const buyOrder = await Order.findOne({
-//       _id: new Types.ObjectId(buyOrderId),
-//       $or: [
-//         { userId: new Types.ObjectId(req.userId) },
-//         { clientId: new Types.ObjectId(req.userId) },
-//       ],
-//     });
-
-//     if (!buyOrder) {
-//       return responseHandler(
-//         res,
-//         404,
-//         "Buy order not found or not authorized",
-//         "error"
-//       );
-//     }
-
-//     const orderItem = await OrderItem.findOne({
-//       orderId: new Types.ObjectId(buyOrderId),
-//     });
-
-//     if (!orderItem) {
-//       return responseHandler(
-//         res,
-//         404,
-//         "OrderItem not found for this buy order",
-//         "error"
-//       );
-//     }
-
-//     // Update OrderItem
-//     const orderItemUpdates: Partial<IOrderItem> = {};
-//     if (quantity !== undefined) orderItemUpdates.quantity = quantity;
-//     if (price !== undefined) orderItemUpdates.price = price;
-//     if (deliveryDate !== undefined)
-//       orderItemUpdates.deliveryDate = new Date(deliveryDate);
-//     if (quantity !== undefined || price !== undefined) {
-//       const updatedQuantity = quantity !== undefined ? quantity : orderItem.quantity;
-//       const updatedPrice = price !== undefined ? price : orderItem.price;
-//       orderItemUpdates.outstandingPrice = updatedQuantity * updatedPrice;
-//     }
-
-//     await OrderItem.findOneAndUpdate(
-//       { orderId: new Types.ObjectId(buyOrderId) },
-//       { $set: orderItemUpdates },
-//       { new: true }
-//     );
-
-//     // Update Order
-//     const orderUpdates: Partial<IOrder> = {};
-//     if (orderStatus !== undefined) orderUpdates.orderStatus = orderStatus;
-//     if (quantity !== undefined || price !== undefined) {
-//       const updatedQuantity = quantity !== undefined ? quantity : orderItem.quantity;
-//       const updatedPrice = price !== undefined ? price : orderItem.price;
-//       orderUpdates.total = updatedQuantity * updatedPrice;
-//       orderUpdates.outstandingTotal = updatedQuantity * updatedPrice;
-//     }
-
-//     const updatedOrder = await Order.findByIdAndUpdate(
-//       buyOrderId,
-//       { $set: orderUpdates },
-//       { new: true }
-//     );
-
-//     responseHandler(
-//       res,
-//       200,
-//       "Buy order updated successfully",
-//       "success",
-//       {
-//         _id: updatedOrder?._id,
-//         orderStatus: updatedOrder?.orderStatus,
-//         total: updatedOrder?.total,
-//         outstandingTotal: updatedOrder?.outstandingTotal,
-//         orderItem: await OrderItem.findOne({
-//           orderId: new Types.ObjectId(buyOrderId),
-//         }),
-//       }
-//     );
-//   } catch (error: any) {
-//     console.error("Error updating buy order:", {
-//       message: error.message,
-//       stack: error.stack,
-//       buyOrderId: req.params.buyOrderId,
-//       userId: req.userId,
-//       body: req.body,
-//       route: req.originalUrl,
-//       method: req.method,
-//     });
-//     responseHandler(
-//       res,
-//       500,
-//       error.message || "Internal server error",
-//       "error"
-//     );
-//   }
-// };
 const updateBuyOrder = async (
   req: AuthRequest,
   res: Response

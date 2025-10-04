@@ -391,13 +391,14 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       variety,
     } = req.body;
 
+
     // Validate ObjectId fields
     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
       return res.status(400).json({ message: "Invalid adminProductId format" });
     }
-    if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
-      return res.status(400).json({ message: "Invalid clientId format" });
-    }
+    // if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
+    //   return res.status(400).json({ message: "Invalid clientId format" });
+    // }
 
     // Validate referenced documents
     const product = await AdminProduct.findById(adminProductId);
@@ -536,6 +537,8 @@ const deleteInventoryById = asyncHandler(
   }
 );
 
+// Updated Backend Controllers
+// Updated Backend Controller for updateInventoryById
 const updateInventoryById = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -557,6 +560,8 @@ const updateInventoryById = asyncHandler(
       season,
       countryOfOrigin,
       variety,
+      productType,
+      productAlias,
     } = req.body;
 
     // Validate ObjectId fields
@@ -572,6 +577,15 @@ const updateInventoryById = asyncHandler(
     if (!product) {
       throw new BadRequestError("Product not found");
     }
+
+    // Update product fields if provided
+    if (productType !== undefined) {
+      product.productType = productType;
+    }
+    if (productAlias !== undefined) {
+      product.productAlias = productAlias;
+    }
+    await product.save();
 
     // Validate client if clientId is provided
     let client = null;
@@ -638,7 +652,7 @@ const updateInventoryById = asyncHandler(
     }
 
     // Validate vat
-    if (isNaN(parseFloat(vat)) || parseFloat(vat) < 0) {
+    if (vat !== undefined && (isNaN(parseFloat(vat as any)) || parseFloat(vat as any) < 0)) {
       throw new BadRequestError("VAT must be a non-negative number");
     }
 
@@ -652,7 +666,7 @@ const updateInventoryById = asyncHandler(
     inventory.adminProductId = adminProductId;
     inventory.size = size;
     inventory.color = color || null;
-    inventory.vat = vat !== undefined ? parseFloat(vat.toString()) : undefined;
+    inventory.vat = vat !== undefined ? parseFloat(vat as any) : undefined;
     inventory.sellBy = sellBy;
     inventory.sellByQuantity = sellByQuantity;
     inventory.shelfLife = shelfLife;
@@ -661,8 +675,14 @@ const updateInventoryById = asyncHandler(
     inventory.variety = variety;
     await inventory.save();
 
+    // Repopulate after save
+    const populatedInventory = await Inventory.findById(id).populate({
+      path: 'adminProductId',
+      select: 'productName productAlias productType productCode variety'
+    });
+
     responseHandler(res, 200, "Inventory updated successfully", "success", {
-      inventory,
+      inventory: populatedInventory,
     });
   }
 );
@@ -673,7 +693,10 @@ const getInventoryById = asyncHandler(async (req: Request, res: Response) => {
     throw new BadRequestError("Invalid inventory ID format");
   }
 
-  const inventory = await Inventory.findById(id);
+  const inventory = await Inventory.findById(id).populate({
+    path: 'adminProductId',
+    select: 'productName productAlias productType productCode variety'
+  });
   if (!inventory) {
     throw new BadRequestError("Inventory not found");
   }
