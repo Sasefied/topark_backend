@@ -137,19 +137,6 @@ const addStockOnInventory = async (
   return inventoryEntry[0];
 };
 
-interface Counter {
-  _id: string;
-  sequence: number;
-}
-
-// Schema for the counters collection
-const CounterSchema = new mongoose.Schema({
-  _id: { type: String, required: true },
-  sequence: { type: Number, default: 0 },
-});
-
-export const Counter = mongoose.model("Counter", CounterSchema);
-
 // Function to get the next clientId
 const getNextClientId = async (session: ClientSession): Promise<string> => {
   // Find the highest existing clientId in the clients collection
@@ -169,21 +156,9 @@ const getNextClientId = async (session: ClientSession): Promise<string> => {
     }
   }
 
-  // Synchronize the counters collection to ensure sequence is at least maxSequence + 1
-  await Counter.findOneAndUpdate(
-    { _id: "clientId" },
-    { $max: { sequence: maxSequence + 1 } },
-    { upsert: true, session }
-  );
+  const nextSequence = maxSequence + 1;
 
-  // Increment the sequence to get the next clientId
-  const counter = await Counter.findOneAndUpdate(
-    { _id: "clientId" },
-    { $inc: { sequence: 1 } },
-    { new: true, upsert: true, session }
-  );
-
-  return `CLIENT-${String(counter.sequence).padStart(3, "0")}`;
+  return `CLIENT-${String(nextSequence).padStart(3, "0")}`;
 };
 
 export const createClient = async (
