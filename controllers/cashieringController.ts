@@ -533,7 +533,7 @@ const getAllCashieringSellOrders = async (req: Request, res: Response) => {
 
 const getCashiersByUserId = async (req: Request, res: Response) => {
   try {
-    const { userId } = req.body;
+    const { userId } = req.params;
 
     if (!userId) {
       return res.status(400).json({ message: "User ID is required" });

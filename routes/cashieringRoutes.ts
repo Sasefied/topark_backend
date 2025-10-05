@@ -39,6 +39,6 @@ router
   .get("/all-cashiering-history", getAllCashieringHistory)
   .get("/today-cashiering", getTodayCashiering)
   .delete("/delete-counter/:counterId", deleteCounter)
-  .get("/get-all-cashier-by-admin", getCashiersByUserId);
+  .get("/get-all-cashier-by-admin/:userId", getCashiersByUserId);
 
 export default router;
