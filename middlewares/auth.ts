@@ -3,6 +3,7 @@ import { UnauthorizedError } from "../utils/errors";
 import tokenUtil from "../utils/token";
 import User from "../schemas/User";
 import mongoose from "mongoose";
+import asyncHandler from "express-async-handler";
 
 // Extend Express Request type to include userEmail and orgId
 declare module "express-serve-static-core" {
@@ -80,5 +81,17 @@ const authMiddleware = async (
     throw new UnauthorizedError(error.message);
   }
 };
+
+export const verifyPermission = (roles: string[] = []) =>
+  asyncHandler(async (req, res, next) => {
+    if (!req.userId || !req.userRoles) {
+      throw new UnauthorizedError("Authentication required");
+    }
+    if (req.userRoles.some((role) => roles.includes(role))) {
+      next();
+    } else {
+      throw new UnauthorizedError("Insufficient permissions");
+    }
+  });
 
 export default authMiddleware;
