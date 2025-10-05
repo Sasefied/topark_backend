@@ -505,42 +505,75 @@ const getAllCashieringSellOrders = async (req: Request, res: Response) => {
 //   }
 // };
 
-async function getCashiersByUserId(userId: string) {
-  const teams = await Team.aggregate([
-    {
-      $match: { createdBy: new Types.ObjectId(userId) },
-    },
-    {
-      $unwind: "$members",
-    },
-    {
-      $match: { "members.roles": "Cashier" },
-    },
-    {
-      $project: {
-        _id: 0,
-        email: "$members.email",
-        roles: "$members.roles",
-        status: "$members.status",
-        memberId: "$members._id",
-        teamName: "$teamName",
+// async function getCashiersByUserId(userId: string) {
+//   const teams = await Team.aggregate([
+//     {
+//       $match: { createdBy: new Types.ObjectId(userId) },
+//     },
+//     {
+//       $unwind: "$members",
+//     },
+//     {
+//       $match: { "members.roles": "Cashier" },
+//     },
+//     {
+//       $project: {
+//         _id: 0,
+//         email: "$members.email",
+//         roles: "$members.roles",
+//         status: "$members.status",
+//         memberId: "$members._id",
+//         teamName: "$teamName",
+//       },
+//     },
+//   ]);
+
+//   return teams;
+// }
+
+const getCashiersByUserId = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
+    }
+
+    const teams = await Team.aggregate([
+      {
+        $match: { createdBy: new Types.ObjectId(userId) },
       },
-    },
-  ]);
+      {
+        $unwind: "$members",
+      },
+      {
+        $match: { "members.roles": "Cashier" },
+      },
+      {
+        $project: {
+          _id: 0,
+          email: "$members.email",
+          roles: "$members.roles",
+          status: "$members.status",
+          memberId: "$members._id",
+          teamName: "$teamName",
+        },
+      },
+    ]);
 
-  return teams;
-}
-
-async function getAdminIdByCashierId(
-  cashierId: string
-): Promise<string | null> {
-  const team = await Team.findOne(
-    { "members._id": new Types.ObjectId(cashierId) },
-    { createdBy: 1, _id: 0 } // only fetch createdBy
-  ).lean();
-
-  return team ? team.createdBy.toString() : null;
-}
+    return res.status(200).json({
+      success: true,
+      data: teams,
+    });
+  } catch (error: any) {
+    console.error("Error fetching cashiering orders:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
 
 const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
   try {
@@ -2183,4 +2216,5 @@ export {
   getTodayCashiering,
   createCounter,
   deleteCounter,
+  getCashiersByUserId
 };
