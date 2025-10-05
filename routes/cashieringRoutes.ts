@@ -17,6 +17,7 @@ import {
   getTodayCashiering,
   createCounter,
   deleteCounter,
+  getCashiersByUserId
 } from "../controllers/cashieringController";
 
 const router = Router();
@@ -37,6 +38,7 @@ router
   .post("/create-counter", createCounter)
   .get("/all-cashiering-history", getAllCashieringHistory)
   .get("/today-cashiering", getTodayCashiering)
-  .delete("/delete-counter/:counterId", deleteCounter);
+  .delete("/delete-counter/:counterId", deleteCounter)
+  .get("/get-all-cashier-by-admin/:userId", getCashiersByUserId);
 
 export default router;
