@@ -12,7 +12,7 @@ export interface IBuyOrder extends Document {
   color: string;
   quantity: number;
   price: number;
-  ExtraCostprice: Number;
+  extraCostPrice: Number;
   ccy: string;
   deliveryDate: Date;
   orderStatus: string;
@@ -36,7 +36,7 @@ const buyOrderSchema: Schema<IBuyOrder> = new Schema(
     color: { type: String, required: true },
     quantity: { type: Number, required: true, default: 0 },
     price: { type: Number, required: true, default: 0 },
-    ExtraCostprice: { type: Number, default: 0 },
+    extraCostPrice: { type: Number, default: 0 },
     ccy: { type: String, required: true, default: "USD" },
     deliveryDate: { type: Date, required: true, default: Date.now },
     orderStatus: {
