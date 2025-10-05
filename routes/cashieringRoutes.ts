@@ -37,7 +37,6 @@ router
   .post("/create-counter", createCounter)
   .get("/all-cashiering-history", getAllCashieringHistory)
   .get("/today-cashiering", getTodayCashiering)
-.delete("/delete-counter/:counterId", deleteCounter);
-
+  .delete("/delete-counter/:counterId", deleteCounter);
 
 export default router;

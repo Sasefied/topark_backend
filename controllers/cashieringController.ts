@@ -17,6 +17,7 @@ import asyncHandler from "express-async-handler";
 import bcrypt from "bcryptjs";
 import Cashiering from "../schemas/Cashiering";
 import User from "../schemas/User";
+import Team from "../schemas/Team";
 
 const getAllCashieringOrders = async (req: Request, res: Response) => {
   try {
@@ -504,22 +505,79 @@ const getAllCashieringSellOrders = async (req: Request, res: Response) => {
 //   }
 // };
 
+async function getCashiersByUserId(userId: string) {
+  const teams = await Team.aggregate([
+    {
+      $match: { createdBy: new Types.ObjectId(userId) },
+    },
+    {
+      $unwind: "$members",
+    },
+    {
+      $match: { "members.roles": "Cashier" },
+    },
+    {
+      $project: {
+        _id: 0,
+        email: "$members.email",
+        roles: "$members.roles",
+        status: "$members.status",
+        memberId: "$members._id",
+        teamName: "$teamName",
+      },
+    },
+  ]);
+
+  return teams;
+}
+
+async function getAdminIdByCashierId(
+  cashierId: string
+): Promise<string | null> {
+  const team = await Team.findOne(
+    { "members._id": new Types.ObjectId(cashierId) },
+    { createdBy: 1, _id: 0 } // only fetch createdBy
+  ).lean();
+
+  return team ? team.createdBy.toString() : null;
+}
+
 const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, cashierId = req.userId } = req.query;
 
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
       return responseHandler(res, 401, "Invalid or missing userId", "error");
     }
 
     const userObjectId = new Types.ObjectId(req.userId);
+    console.log("user id:", userObjectId);
+
+    const teamId = req.userTeamId;
+
+    const team = await Team.findOne({
+      _id: teamId,
+    });
+
+    let matchCondition: any = {};
+    // check if current user is admin (created the team)
+    if (team && team.createdBy.toString() === userObjectId.toString()) {
+      if (cashierId === req.userId) {
+        matchCondition = { userId: userObjectId };
+      } else {
+        matchCondition = { userId: new Types.ObjectId(cashierId as string) };
+      }
+      console.log("is admin");
+    } else {
+      console.log("is not admin");
+      matchCondition = { userId: team?.createdBy };
+    }
+    console.log("matching conditions:::", matchCondition);
 
     const combinedAggregate = Order.aggregate([
       // Base: Buy Orders
       {
-        $match: {
-          userId: userObjectId,
-        },
+        $match: matchCondition,
       },
       {
         $lookup: {
@@ -1859,7 +1917,6 @@ const processCashieringSellOrder = async (req: Request, res: Response) => {
   }
 };
 
-
 const verifyUserPassword = asyncHandler(async (req, res) => {
   const { password } = req.body;
   const userId = req.userId; // Assumes userId is set by authentication middleware
@@ -1886,7 +1943,6 @@ function getToday(): Date {
   today.setHours(0, 0, 0, 0);
   return today;
 }
-
 
 const setOpeningAmount = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId;
@@ -1932,47 +1988,49 @@ const setClosingAmount = asyncHandler(async (req: Request, res: Response) => {
   responseHandler(res, 200, "Closing amount set successfully", "success", doc);
 });
 
-const getAllCashieringHistory = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.userId;
-  const { page = 1, limit = 10 } = req.query;
+const getAllCashieringHistory = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.userId;
+    const { page = 1, limit = 10 } = req.query;
 
-  const cashieringAggregate = Cashiering.aggregate([
-    { $match: { userId: new Types.ObjectId(req.userId) } },
-    { $sort: { dayDate: -1 } },
-    {
-      $project: {
-        _id: 1,
-        userId: 1,
-        counterId: 1,
-        openingAmount: 1,
-        closingAmount: 1,
-        dayDate: 1,
-        isOpen: { $eq: ["$closingAmount", null] },
+    const cashieringAggregate = Cashiering.aggregate([
+      { $match: { userId: new Types.ObjectId(req.userId) } },
+      { $sort: { dayDate: -1 } },
+      {
+        $project: {
+          _id: 1,
+          userId: 1,
+          counterId: 1,
+          openingAmount: 1,
+          closingAmount: 1,
+          dayDate: 1,
+          isOpen: { $eq: ["$closingAmount", null] },
+        },
       },
-    },
-  ]);
+    ]);
 
-  const cashierings = await (Cashiering as any).aggregatePaginate(
-    cashieringAggregate,
-    {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
-      customLabels: {
-        docs: "cashierings",
-        totalDocs: "totalCashierings",
-      },
-    }
-  );
+    const cashierings = await (Cashiering as any).aggregatePaginate(
+      cashieringAggregate,
+      {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        customLabels: {
+          docs: "cashierings",
+          totalDocs: "totalCashierings",
+        },
+      }
+    );
 
-  responseHandler(
-    res,
-    200,
-    "Cashiering history fetched successfully",
-    "success",
-    cashierings
-  );
-});
- const createCounter = asyncHandler(async (req: Request, res: Response) => {
+    responseHandler(
+      res,
+      200,
+      "Cashiering history fetched successfully",
+      "success",
+      cashierings
+    );
+  }
+);
+const createCounter = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId;
   let { counterId } = req.body;
 
@@ -2044,7 +2102,7 @@ const deleteCounter = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const today = getToday();
-  
+
   // Check if counter exists and is not open
   const counter = await Cashiering.findOne({
     userId,
@@ -2057,7 +2115,9 @@ const deleteCounter = asyncHandler(async (req: Request, res: Response) => {
   }
 
   if (counter.closingAmount === null || counter.isOpen) {
-    throw new BadRequestError("Cannot delete an open counter. Please close it first");
+    throw new BadRequestError(
+      "Cannot delete an open counter. Please close it first"
+    );
   }
 
   // Delete the counter
@@ -2109,7 +2169,6 @@ const getTodayCashiering = asyncHandler(async (req: Request, res: Response) => {
   );
 });
 
-
 export {
   getAllCashieringOrders,
   searchCashieringOrders,
@@ -2127,5 +2186,5 @@ export {
   getAllCashieringHistory,
   getTodayCashiering,
   createCounter,
-  deleteCounter
+  deleteCounter,
 };
