@@ -596,9 +596,6 @@ export const addClientToUser = async (
   }
 };
 
-
-
-
 interface PopulatedCreatedBy {
   _id: string;
   firstName: string;
@@ -985,8 +982,25 @@ export const searchClients = async (
         "firstName lastName companyName companyReferenceNumber"
       );
 
+    const users = await User.find({
+      $and: [
+        {
+          $or: [
+            { firstName: { $regex: searchRegex } },
+            { lastName: { $regex: searchRegex } },
+            { companyName: { $regex: searchRegex } },
+            { companyReferenceNumber: { $regex: searchRegex } },
+          ],
+        },
+        { email: { $ne: req.userEmail } }, // exclude self
+        { _id: { $nin: excludedClientIds } }, // exclude already added clients
+      ],
+    }).select(
+      "firstName lastName companyName email companyReferenceNumber createdAt updatedAt"
+    );
+
     // Validate clients and map to plain object
-    const validClients = clients
+    const validClientsArray = clients
       .filter((client) => {
         if (!client.clientName || !client.clientId) {
           console.warn("searchClients - Invalid client data:", client);
@@ -1050,11 +1064,24 @@ export const searchClients = async (
           : undefined,
       }));
 
+    const validUsers = users.map((user: any) => ({
+      _id: user._id.toString(),
+      type: "user",
+      userId: user._id.toString(),
+      clientName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+      clientEmail: user.email,
+      registeredName: user.companyName || "",
+      companyReferenceNumber: user.companyReferenceNumber || "",
+      createdAt: user.createdAt?.toISOString(),
+      updatedAt: user.updatedAt?.toISOString(),
+    }));
+
+    const validClients = [...validClientsArray, ...validUsers];
     const count = validClients.length;
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
       count,
-      validClients,
+      validClients
     });
   } catch (error: any) {
     console.error("searchClients - Error:", {
@@ -1156,7 +1183,6 @@ export const getClientById = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-
 
 export const updateClient = async (
   req: Request,
@@ -1438,7 +1464,10 @@ export const updateClient = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-export const deleteClient = async (req: Request, res: Response): Promise<void> => {
+export const deleteClient = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -1517,23 +1546,28 @@ export const deleteClient = async (req: Request, res: Response): Promise<void> =
 
     await session.commitTransaction();
     session.endSession();
-    responseHandler(res, 200, "Client and associated data removed successfully", "success");
-} catch (error: any) {
-await session.abortTransaction();
-session.endSession();
-console.error("deleteClient - Error:", {
-message: error.message,
-stack: error.stack,
-userId: req.userId,
-clientId: req.body.clientId,
-});
-responseHandler(
-res,
-error.message.includes("not found") ? 404 : 400,
-error.message,
-"error"
-);
-}
+    responseHandler(
+      res,
+      200,
+      "Client and associated data removed successfully",
+      "success"
+    );
+  } catch (error: any) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("deleteClient - Error:", {
+      message: error.message,
+      stack: error.stack,
+      userId: req.userId,
+      clientId: req.body.clientId,
+    });
+    responseHandler(
+      res,
+      error.message.includes("not found") ? 404 : 400,
+      error.message,
+      "error"
+    );
+  }
 };
 export const getProductByClientId = async (
   req: Request,
@@ -1599,8 +1633,8 @@ export const getProductByClientId = async (
           _id: { $toString: "$_id" },
           adminProductId: { $toString: "$adminProductId" },
           adminProductName: { $ifNull: ["$adminProduct.productName", null] },
-          productCode: {$ifNull: ["$adminProduct.productCode", null]},
-          alias:  { $ifNull: ["$adminProduct.productAlias", null] },
+          productCode: { $ifNull: ["$adminProduct.productCode", null] },
+          alias: { $ifNull: ["$adminProduct.productAlias", null] },
           productType: { $ifNull: ["$adminProduct.productType", null] },
           size: 1,
           color: { $ifNull: ["$color", null] },
