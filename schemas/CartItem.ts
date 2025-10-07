@@ -8,6 +8,7 @@ export interface ICartItem extends Document {
   quantity: number;
   price: number;
   deliveryDate: Date;
+  extraCostPrice: Number;
   // orderStatus: string;
 }
 
@@ -39,6 +40,7 @@ const cartItemSchema: Schema<ICartItem> = new Schema(
       required: true,
       default: Date.now,
     },
+     extraCostPrice: { type: Number, default: 0 },
     // orderStatus: {
     //   type: String,
     //   enum: ["Pending", "Requested", "Confirmed"],

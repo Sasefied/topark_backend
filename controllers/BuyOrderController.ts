@@ -25,7 +25,7 @@ const createBuyOrder = async (
         "error"
       );
     }
-    const { inventoryId, quantity, price, deliveryDate } = req.body;
+    const { inventoryId, quantity, price, deliveryDate, extraCostPrice } = req.body;
 
     if (!inventoryId || !Types.ObjectId.isValid(inventoryId)) {
       return responseHandler(
@@ -74,6 +74,7 @@ const createBuyOrder = async (
           inventoryId,
           quantity,
           price,
+          extraCostPrice,
           deliveryDate,
         },
       },

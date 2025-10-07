@@ -115,6 +115,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
             _id: 1,
             clientName: { $ifNull: ["$client.clientName", "N/A"] },
             clientId: { $ifNull: ["$client.clientId", "N/A"] },
+            countryName: { $ifNull: ["$client.countryName", "N/A"] }
           },
         },
       },
