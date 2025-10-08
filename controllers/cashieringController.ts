@@ -645,24 +645,27 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
     const userObjectId = new Types.ObjectId(req.userId);
     console.log("user id:", userObjectId);
 
-    const teamId = req.userTeamId;
-
-    const team = await Team.findOne({
-      _id: teamId,
-    });
-
     let matchCondition: any = {};
     // check if current user is admin (created the team)
-    if (team && team.createdBy.toString() === userObjectId.toString()) {
+    // if (team && team.createdBy.toString() === userObjectId.toString()) {
+    //   if (cashierId === req.userId) {
+    //     matchCondition = { userId: userObjectId };
+    //   } else {
+    //     matchCondition = { userId: new Types.ObjectId(cashierId as string) };
+    //   }
+    //   console.log("is admin");
+    // } else {
+    //   console.log("is not admin");
+    //   matchCondition = { userId: team?.createdBy };
+    // }
+    if(req.userRoles?.includes("Admin")) {
       if (cashierId === req.userId) {
         matchCondition = { userId: userObjectId };
-      } else {
+      }else {
         matchCondition = { userId: new Types.ObjectId(cashierId as string) };
       }
-      console.log("is admin");
-    } else {
-      console.log("is not admin");
-      matchCondition = { userId: team?.createdBy };
+    }else {
+      matchCondition = { userId: userObjectId };
     }
     console.log("matching conditions:::", matchCondition);
 
