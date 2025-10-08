@@ -60,12 +60,85 @@ const getAllInventories: RequestHandler = async (req, res) => {
           clientName: "$client.name",
         },
       },
+
+      {
+        $lookup: {
+          from: "users",
+          let: {
+            supplierUserId: { $arrayElemAt: ["$client.client.userId", 0] },
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$supplierUserId"] },
+              },
+            },
+            {
+              $project: {
+                _id: 1,
+                firstName: 1,
+                lastName: 1,
+              },
+            },
+          ],
+          as: "supplierUser",
+        },
+      },
+      {
+        $addFields: {
+          supplierName: {
+            $cond: {
+              if: { $gt: [{ $size: "$supplierUser" }, 0] },
+              then: {
+                $concat: [
+                  { $arrayElemAt: ["$supplierUser.firstName", 0] },
+                  " ",
+                  { $arrayElemAt: ["$supplierUser.lastName", 0] },
+                ],
+              },
+              else: null,
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "orderitems",
+          let: { inventoryId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$inventoryId", "$$inventoryId"] },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalOutstandingPrice: { $sum: "$outstandingPrice" },
+              },
+            },
+          ],
+          as: "orderStats",
+        },
+      },
+      {
+        $addFields: {
+          outstandingPrice: {
+            $ifNull: [
+              { $arrayElemAt: ["$orderStats.totalOutstandingPrice", 0] },
+              0,
+            ],
+          },
+        },
+      },
+
       {
         $match: matchStage,
       },
       {
         $project: {
           client: 0,
+          orderStats: 0,
         },
       },
     ]);
@@ -291,7 +364,6 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       countryOfOrigin,
       variety,
     } = req.body;
-
 
     // Validate ObjectId fields
     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
@@ -553,7 +625,10 @@ const updateInventoryById = asyncHandler(
     }
 
     // Validate vat
-    if (vat !== undefined && (isNaN(parseFloat(vat as any)) || parseFloat(vat as any) < 0)) {
+    if (
+      vat !== undefined &&
+      (isNaN(parseFloat(vat as any)) || parseFloat(vat as any) < 0)
+    ) {
       throw new BadRequestError("VAT must be a non-negative number");
     }
 
@@ -578,8 +653,8 @@ const updateInventoryById = asyncHandler(
 
     // Repopulate after save
     const populatedInventory = await Inventory.findById(id).populate({
-      path: 'adminProductId',
-      select: 'productName productAlias productType productCode variety'
+      path: "adminProductId",
+      select: "productName productAlias productType productCode variety",
     });
 
     responseHandler(res, 200, "Inventory updated successfully", "success", {
@@ -595,8 +670,8 @@ const getInventoryById = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const inventory = await Inventory.findById(id).populate({
-    path: 'adminProductId',
-    select: 'productName productAlias productType productCode variety'
+    path: "adminProductId",
+    select: "productName productAlias productType productCode variety",
   });
   if (!inventory) {
     throw new BadRequestError("Inventory not found");
