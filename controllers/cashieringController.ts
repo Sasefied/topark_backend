@@ -533,15 +533,15 @@ const getAllCashieringSellOrders = async (req: Request, res: Response) => {
 
 const getCashiersByUserId = async (req: Request, res: Response) => {
   try {
-    const { userId } = req.params;
+    const { teamId } = req.params;
 
-    if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+    if (!teamId) {
+      return res.status(400).json({ message: "Team ID is required" });
     }
 
     const teams = await Team.aggregate([
       {
-        $match: { createdBy: new Types.ObjectId(userId) },
+        $match: { _id: new Types.ObjectId(teamId) },
       },
       {
         $unwind: "$members",
@@ -577,7 +577,7 @@ const getCashiersByUserId = async (req: Request, res: Response) => {
 
 const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 10, cashierId = req.userId } = req.query;
+    const { page = 1, limit = 10, teamId, cashierId = req.userId } = req.query;
 
     if (!req.userId || !Types.ObjectId.isValid(req.userId)) {
       return responseHandler(res, 401, "Invalid or missing userId", "error");
@@ -586,31 +586,12 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
     const userObjectId = new Types.ObjectId(req.userId);
     console.log("user id:", userObjectId);
 
-    const teamId = req.userTeamId;
-
-    const team = await Team.findOne({
-      _id: teamId,
-    });
-
-    let matchCondition: any = {};
-    // check if current user is admin (created the team)
-    if (team && team.createdBy.toString() === userObjectId.toString()) {
-      if (cashierId === req.userId) {
-        matchCondition = { userId: userObjectId };
-      } else {
-        matchCondition = { userId: new Types.ObjectId(cashierId as string) };
-      }
-      console.log("is admin");
-    } else {
-      console.log("is not admin");
-      matchCondition = { userId: team?.createdBy };
-    }
-    console.log("matching conditions:::", matchCondition);
-
     const combinedAggregate = Order.aggregate([
       // Base: Buy Orders
       {
-        $match: matchCondition,
+        $match: {
+          teamId: new Types.ObjectId(teamId as string),
+        },
       },
       {
         $lookup: {
@@ -673,7 +654,7 @@ const getAllCashieringOrdersCombined = async (req: Request, res: Response) => {
         $unionWith: {
           coll: "sellorders",
           pipeline: [
-            { $match: { userId: userObjectId } },
+            { $match: { teamId: new Types.ObjectId(teamId as string) } },
             {
               $lookup: {
                 from: "sellorderitems",
@@ -2220,5 +2201,5 @@ export {
   getTodayCashiering,
   createCounter,
   deleteCounter,
-  getCashiersByUserId
+  getCashiersByUserId,
 };

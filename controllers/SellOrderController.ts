@@ -591,7 +591,7 @@ const searchProductCode = asyncHandler(
 
 const createSellOrder = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { orderItems, clientId, shipToday } = req.body;
+    const { orderItems, clientId, shipToday, teamId } = req.body;
     const session = await mongoose.startSession();
     await session.startTransaction();
 
@@ -641,6 +641,7 @@ const createSellOrder = asyncHandler(
             {
               userId: req.userId,
               clientId,
+              teamId,
               orderNumber: (lastOrderNumber?.orderNumber || 0) + 1,
               total,
               shipToday,

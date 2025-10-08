@@ -113,7 +113,7 @@ const createBulkBuyOrders = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { orders } = req.body;
+    const { orders, teamId } = req.body;
     const userId = req.userId;
 
     if (!userId || !Types.ObjectId.isValid(userId)) {
@@ -138,6 +138,7 @@ const createBulkBuyOrders = async (
     session.startTransaction();
 
     try {
+     
       const createdOrders = [];
       for (const order of orders) {
         const {
@@ -221,6 +222,7 @@ const createBulkBuyOrders = async (
         const newOrder = new Order({
           userId: new Types.ObjectId(userId),
           clientId: clientId ? new Types.ObjectId(clientId) : null,
+          teamId: new Types.ObjectId(teamId),
           total: quantity * price,
           outstandingTotal: quantity * price,
           orderStatus: orderStatus || "Requested",

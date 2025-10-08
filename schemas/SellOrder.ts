@@ -5,6 +5,7 @@ import { AvailableOrderStatuses, OrderStatusEnum } from "../api/constants";
 export interface ISellOrder extends Document {
   userId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
+  teamId: mongoose.Schema.Types.ObjectId;
   invoiceUrl: string;
   orderNumber: number;
   total: number;
@@ -27,6 +28,11 @@ const sellOrderSchema: Schema<ISellOrder> = new Schema(
     clientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
+      required: true,
+    },
+    teamId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Team",
       required: true,
     },
     invoiceUrl: {
