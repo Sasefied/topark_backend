@@ -49,37 +49,16 @@ const getAllInventories: RequestHandler = async (req, res) => {
           as: "client",
         },
       },
-      {
-        $unwind: {
-          path: "$client",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $addFields: {
-          clientName: "$client.name",
-        },
-      },
+      { $unwind: { path: "$client", preserveNullAndEmptyArrays: true } },
 
+      // Lookup user using client.userId
       {
         $lookup: {
           from: "users",
-          let: {
-            supplierUserId: { $arrayElemAt: ["$client.client.userId", 0] },
-          },
+          let: { userId: "$client.userId" },
           pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ["$_id", "$$supplierUserId"] },
-              },
-            },
-            {
-              $project: {
-                _id: 1,
-                firstName: 1,
-                lastName: 1,
-              },
-            },
+            { $match: { $expr: { $eq: ["$_id", "$$userId"] } } },
+            { $project: { _id: 0, firstName: 1, lastName: 1 } }, // only keep names
           ],
           as: "supplierUser",
         },
