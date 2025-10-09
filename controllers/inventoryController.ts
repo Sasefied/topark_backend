@@ -1,5 +1,5 @@
 import { Request, RequestHandler, Response } from "express";
-import mongoose, { Types } from "mongoose";
+import mongoose, { Types, PipelineStage } from "mongoose";
 import Inventory from "../schemas/Inventory";
 import { AdminProduct } from "../schemas/AdminProduct";
 import { responseHandler } from "../utils/responseHandler";
@@ -13,20 +13,18 @@ const getAllInventories: RequestHandler = async (req, res) => {
     const { page = 1, limit = 10, search = "" } = req.query;
 
     if (!req.userId || !mongoose.Types.ObjectId.isValid(req.userId)) {
-      res.status(401).json({ message: "Invalid or missing userId" });
+      return res.status(401).json({ message: "Invalid or missing userId" });
     }
 
-    const matchStage: any = {
-      userId: { $eq: new Types.ObjectId(req.userId) },
-    };
+    const userObjectId = new Types.ObjectId(req.userId);
 
-    if (search) {
-      matchStage["adminProduct.productName"] = {
-        $regex: search,
-        $options: "i",
-      };
-    }
-    const inventoryAggregate = Inventory.aggregate([
+    // Build the aggregation stages dynamically for optimization
+    const stages: PipelineStage[] = [
+      {
+        $match: {
+          userId: { $eq: userObjectId },
+        },
+      },
       {
         $lookup: {
           from: "adminproducts",
@@ -41,6 +39,22 @@ const getAllInventories: RequestHandler = async (req, res) => {
           preserveNullAndEmptyArrays: true,
         },
       },
+    ];
+
+    // Add search match after adminProduct lookup if search is provided
+    if (search) {
+      stages.push({
+        $match: {
+          "adminProduct.productName": {
+            $regex: search,
+            $options: "i",
+          },
+        },
+      });
+    }
+
+    // Continue with other stages
+    stages.push(
       {
         $lookup: {
           from: "clients",
@@ -60,7 +74,6 @@ const getAllInventories: RequestHandler = async (req, res) => {
           clientName: "$client.name",
         },
       },
-
       {
         $lookup: {
           from: "users",
@@ -104,44 +117,34 @@ const getAllInventories: RequestHandler = async (req, res) => {
       {
         $lookup: {
           from: "orderitems",
-          let: { inventoryId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ["$inventoryId", "$$inventoryId"] },
-              },
-            },
-            {
-              $group: {
-                _id: null,
-                totalOutstandingPrice: { $sum: "$outstandingPrice" },
-              },
-            },
-          ],
-          as: "orderStats",
+          localField: "orderItemId",
+          foreignField: "_id",
+          as: "orderItem",
+        },
+      },
+      {
+        $unwind: {
+          path: "$orderItem",
+          preserveNullAndEmptyArrays: true,
         },
       },
       {
         $addFields: {
           outstandingPrice: {
-            $ifNull: [
-              { $arrayElemAt: ["$orderStats.totalOutstandingPrice", 0] },
-              0,
-            ],
+            $ifNull: ["$orderItem.outstandingPrice", 0],
           },
         },
-      },
-
-      {
-        $match: matchStage,
       },
       {
         $project: {
           client: 0,
-          orderStats: 0,
+          orderItem: 0,
+          supplierUser: 0,
         },
-      },
-    ]);
+      }
+    );
+
+    const inventoryAggregate = Inventory.aggregate(stages);
 
     const inventories = await (Inventory as any).aggregatePaginate(
       inventoryAggregate,

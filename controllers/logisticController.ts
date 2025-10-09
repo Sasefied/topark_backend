@@ -423,6 +423,7 @@ const receivedOkLogisticOrderItem = asyncHandler(
              userId: req.userId,
              clientId: inventory.clientId,
              adminProductId: inventory.adminProductId,
+             orderItemId: orderItem._id,
              // grade: inventory.,
              pricePerUnit: orderItem.price,
              qtyInStock: orderItem.quantity,
