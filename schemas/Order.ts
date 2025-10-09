@@ -4,6 +4,7 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 export interface IOrder extends Document {
   userId: mongoose.Schema.Types.ObjectId;
   clientId: mongoose.Schema.Types.ObjectId;
+  teamId: mongoose.Schema.Types.ObjectId;
   invoiceNumber: string;
   total: number;
   outstandingTotal: number;
@@ -20,6 +21,11 @@ const orderSchema: Schema<IOrder> = new Schema(
     clientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
+      required: true,
+    },
+    teamId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Team",
       required: true,
     },
     invoiceNumber: {
