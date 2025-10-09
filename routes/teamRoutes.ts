@@ -4,13 +4,14 @@ import {
   saveTeamName,
   updatePrimaryUsage,
   addTeamMembers,
-  acceptInvitation
+  acceptInvitation,
 } from "../controllers/teamController";
 import { body } from "express-validator";
 import auth from "../middlewares/auth";
 import { validate } from "../middlewares/validate";
 
 const router = express.Router();
+
 
 // Step 1: Save team name (Team Onboarding)
 router.post(
@@ -55,6 +56,8 @@ router.post(
   validate,
   acceptInvitation
 );
+
+
 
 
 

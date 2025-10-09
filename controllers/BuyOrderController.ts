@@ -117,6 +117,8 @@ const createBulkBuyOrders = async (
     const { orders, teamId } = req.body;
     const userId = req.userId;
 
+    console.log("teamID", teamId)
+
     if (!userId || !Types.ObjectId.isValid(userId)) {
       return responseHandler(
         res,
