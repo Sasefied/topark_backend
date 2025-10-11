@@ -7,6 +7,7 @@ export interface IInventory extends Document {
   adminProductId: mongoose.Schema.Types.ObjectId;
   clientId?: mongoose.Schema.Types.ObjectId;
   orderItemId: mongoose.Schema.Types.ObjectId;
+  teamId: mongoose.Schema.Types.ObjectId;
   size: string;
   color?: string | null;
   vat?: number;
@@ -54,6 +55,11 @@ const inventorySchema: Schema<IInventory> = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "OrderItem",
       required: false,
+    },
+    teamId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Team",
+      required: true,
     },
     size: {
       type: String,

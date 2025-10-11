@@ -10,19 +10,41 @@ import { BadRequestError } from "../utils/errors";
 
 const getAllInventories: RequestHandler = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "" } = req.query;
+    const { page, limit, search, teamId } = req.query;
 
     if (!req.userId || !mongoose.Types.ObjectId.isValid(req.userId)) {
       return res.status(401).json({ message: "Invalid or missing userId" });
     }
 
-    const userObjectId = new Types.ObjectId(req.userId);
+    // Normalize and validate query params
+    const pageStr = Array.isArray(page) ? page[0] : page;
+    const limitStr = Array.isArray(limit) ? limit[0] : limit;
+    const searchStr = Array.isArray(search) ? search[0] : search;
+    const teamIdStr = Array.isArray(teamId) ? teamId[0] : teamId;
+
+    if (typeof teamIdStr !== "string" || !Types.ObjectId.isValid(teamIdStr)) {
+      return res.status(400).json({ message: "Invalid or missing teamId" });
+    }
+
+    const pageNumber = (() => {
+      const n = typeof pageStr === "string" ? parseInt(pageStr, 10) : 1;
+      return Number.isFinite(n) && n > 0 ? n : 1;
+    })();
+
+    const limitNumber = (() => {
+      const n = typeof limitStr === "string" ? parseInt(limitStr, 10) : 10;
+      return Number.isFinite(n) && n > 0 ? n : 10;
+    })();
+
+    const searchTerm = typeof searchStr === "string" ? searchStr : "";
+
+    const teamObjectId = new Types.ObjectId(teamIdStr);
 
     // Build the aggregation stages dynamically for optimization
     const stages: PipelineStage[] = [
       {
         $match: {
-          userId: { $eq: userObjectId },
+          teamId: { $eq: teamObjectId },
         },
       },
       {
@@ -42,11 +64,11 @@ const getAllInventories: RequestHandler = async (req, res) => {
     ];
 
     // Add search match after adminProduct lookup if search is provided
-    if (search) {
+    if (searchTerm) {
       stages.push({
         $match: {
           "adminProduct.productName": {
-            $regex: search,
+            $regex: searchTerm,
             $options: "i",
           },
         },
@@ -148,8 +170,8 @@ const getAllInventories: RequestHandler = async (req, res) => {
     const inventories = await (Inventory as any).aggregatePaginate(
       inventoryAggregate,
       {
-        page: parseInt(page as string, 10),
-        limit: parseInt(limit as string, 10),
+        page: pageNumber,
+        limit: limitNumber,
         customLabels: {
           docs: "inventories",
           totalDocs: "totalInventories",
