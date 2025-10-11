@@ -57,7 +57,8 @@ const addStockOnInventory = async (
   userId: string,
   product: IInventory,
   session: ClientSession,
-  clientId?: String
+  clientId?: String,
+  teamId?: String
 ) => {
   const {
     adminProductId,
@@ -121,6 +122,7 @@ const addStockOnInventory = async (
         userId,
         clientId,
         adminProductId,
+        teamId,
         size,
         color: color || null,
         vat,
@@ -170,6 +172,7 @@ export const createClient = async (
   session.startTransaction();
 
   try {
+    const { teamId } = req.query;
     const {
       clientName,
       workanniversary,
@@ -199,10 +202,11 @@ export const createClient = async (
       !clientEmail?.trim() ||
       !registeredName ||
       !userId ||
-      !preference
+      !preference ||
+      !teamId
     ) {
       throw new BadRequestError(
-        "Required fields: clientName, clientEmail, registeredName, userId, preference"
+        "Required fields: clientName, clientEmail, registeredName, userId, preference, teamId"
       );
     }
 
@@ -404,7 +408,8 @@ export const createClient = async (
             offlineUser._id,
             product,
             session,
-            String(newClient._id)
+            String(newClient._id),
+            String(teamId)
           )
         )
       );
@@ -1007,8 +1012,9 @@ export const searchClients = async (
     const myClientDoc = await MyClient.findOne({ userId: userId.toString() });
     console.log("MyClient document:", myClientDoc);
     const excludedClientIds = myClientDoc?.clientId || [];
-    const excludedClientUserIds =
-      (myClientDoc?.client?.map((c) => c.userId).filter((id) => id) ?? []) as unknown as Types.ObjectId[];
+    const excludedClientUserIds = (myClientDoc?.client
+      ?.map((c) => c.userId)
+      .filter((id) => id) ?? []) as unknown as Types.ObjectId[];
 
     const searchRegex = new RegExp(searchTerm, "i"); // Case-insensitive search
     const clients = await Client.find({

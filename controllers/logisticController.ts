@@ -372,6 +372,7 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
 const receivedOkLogisticOrderItem = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { orderItemId } = req.params;
+    const { teamId } = req.query;
     const session = await mongoose.startSession();
     await session.startTransaction();
     try {
@@ -416,32 +417,33 @@ const receivedOkLogisticOrderItem = asyncHandler(
       //     }
       //   ).session(session);
       // } else {
-       
+
       // }
 
-       await Inventory.create(
-         [
-           {
-             userId: req.userId,
-             clientId: inventory.clientId,
-             adminProductId: inventory.adminProductId,
-             orderItemId: orderItem._id,
-             // grade: inventory.,
-             pricePerUnit: orderItem.price,
-             qtyInStock: orderItem.quantity,
-             qtyIncoming: orderItem.quantity,
-             sourceCountry: inventory.countryOfOrigin,
-             // ccy: inventory.ccy,
-             buyingPrice: orderItem.price,
-             tradingPrice: orderItem.price,
-             countryOfOrigin: inventory.countryOfOrigin,
-             shelfLife: inventory.shelfLife,
-             sellBy: inventory.sellBy,
-             size: inventory.size,
-           },
-         ],
-         { session }
-       );
+      await Inventory.create(
+        [
+          {
+            userId: req.userId,
+            clientId: inventory.clientId,
+            adminProductId: inventory.adminProductId,
+            orderItemId: orderItem._id,
+            teamId: teamId,
+            // grade: inventory.,
+            pricePerUnit: orderItem.price,
+            qtyInStock: orderItem.quantity,
+            qtyIncoming: orderItem.quantity,
+            sourceCountry: inventory.countryOfOrigin,
+            // ccy: inventory.ccy,
+            buyingPrice: orderItem.price,
+            tradingPrice: orderItem.price,
+            countryOfOrigin: inventory.countryOfOrigin,
+            shelfLife: inventory.shelfLife,
+            sellBy: inventory.sellBy,
+            size: inventory.size,
+          },
+        ],
+        { session }
+      );
 
       await OrderItem.updateOne(
         { _id: orderItemId },
