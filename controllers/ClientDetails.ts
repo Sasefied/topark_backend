@@ -610,7 +610,10 @@ interface PopulatedClient extends Omit<IClient, "createdBy"> {
   createdBy: PopulatedCreatedBy | null;
 }
 
-export const getClientsForUser = async (req: Request, res: Response): Promise<void> => {
+export const getClientsForUser = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.userId;
 
@@ -667,7 +670,9 @@ export const getClientsForUser = async (req: Request, res: Response): Promise<vo
       }
 
       targetUserId = new Types.ObjectId(adminUser._id);
-      console.log(`Team member (${user.email}) - showing admin (${adminUser.email}) clients`);
+      console.log(
+        `Team member (${user.email}) - showing admin (${adminUser.email}) clients`
+      );
     }
 
     // Fetch all clients created by the target user (admin or self)
@@ -690,7 +695,12 @@ export const getClientsForUser = async (req: Request, res: Response): Promise<vo
           as: "clients.createdBy",
         },
       },
-      { $unwind: { path: "$clients.createdBy", preserveNullAndEmptyArrays: true } },
+      {
+        $unwind: {
+          path: "$clients.createdBy",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
       { $replaceRoot: { newRoot: "$clients" } },
       {
         $project: {
@@ -713,12 +723,15 @@ export const getClientsForUser = async (req: Request, res: Response): Promise<vo
           createdBy: 1,
           createdAt: 1,
           updatedAt: 1,
+          isOfflineUser: 1,
         },
       },
       { $sort: { createdAt: -1 } },
     ];
 
     const clients: any[] = await (MyClient as any).aggregate(pipeline);
+
+    console.log("Client", clients);
 
     // Map for cleaner response
     const mappedClients = clients.map((client) => ({
@@ -753,6 +766,7 @@ export const getClientsForUser = async (req: Request, res: Response): Promise<vo
         : null,
       createdAt: client.createdAt?.toISOString(),
       updatedAt: client.updatedAt?.toISOString(),
+      isOfflineUser: client.createdBy.isOfflineUser,
     }));
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
@@ -1115,7 +1129,7 @@ export const searchClients = async (
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
       count,
-      validClients
+      validClients,
     });
   } catch (error: any) {
     console.error("searchClients - Error:", {
