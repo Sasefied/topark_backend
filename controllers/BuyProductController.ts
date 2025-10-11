@@ -4,12 +4,28 @@ import { responseHandler } from "../utils/responseHandler";
 import { Types } from "mongoose";
 import MyClientModel from "../schemas/MyClient";
 import Client from "../schemas/ClientDetails";
+import Team from "../schemas/Team";
 
 const searchBuyProducts = async (req: Request, res: Response) => {
   try {
-    const { query = "", page = "1", limit = "10" } = req.query;
+    const { query = "", page = "1", limit = "10", teamId } = req.query;
+    const team = await Team.findById(teamId);
+    if(!team){
+       return responseHandler(res, 200, "No buy orders found", "success", {
+        buyOrders: [],
+        totalBuyOrders: 0,
+        page: 1,
+        limit: 10,
+        totalPages: 0,
+        pagingCounter: 1,
+        hasPrevPage: false,
+        hasNextPage: false,
+        prevPage: null,
+        nextPage: null,
+      });
+    }
 
-    const myClient = await MyClientModel.findOne({ userId: req.userId })
+    const myClient = await MyClientModel.findOne({ userId: team.createdBy })
       .select("clientId client")
       .lean();
 
