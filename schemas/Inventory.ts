@@ -53,7 +53,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
     orderItemId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "OrderItem",
-      required: true,
+      required: false,
     },
     size: {
       type: String,

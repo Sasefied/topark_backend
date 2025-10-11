@@ -50,7 +50,7 @@ const getAllInventories: RequestHandler = async (req, res) => {
             $options: "i",
           },
         },
-      });
+      } as PipelineStage);
     }
 
     // Continue with other stages
@@ -138,7 +138,6 @@ const getAllInventories: RequestHandler = async (req, res) => {
       {
         $project: {
           client: 0,
-          orderItem: 0,
           supplierUser: 0,
         },
       }
