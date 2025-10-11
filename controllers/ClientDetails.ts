@@ -713,6 +713,7 @@ export const getClientsForUser = async (req: Request, res: Response): Promise<vo
           createdBy: 1,
           createdAt: 1,
           updatedAt: 1,
+          isOfflineUser: 1,
         },
       },
       { $sort: { createdAt: -1 } },
@@ -753,6 +754,7 @@ export const getClientsForUser = async (req: Request, res: Response): Promise<vo
         : null,
       createdAt: client.createdAt?.toISOString(),
       updatedAt: client.updatedAt?.toISOString(),
+      isOfflineUser: client.isOfflineUser,
     }));
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {

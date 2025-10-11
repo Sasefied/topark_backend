@@ -10,6 +10,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
   try {
     const { query = "", page = "1", limit = "10", teamId } = req.query;
     const team = await Team.findById(teamId);
+    console.log("team-----",team)
     if(!team){
        return responseHandler(res, 200, "No buy orders found", "success", {
         buyOrders: [],
@@ -58,7 +59,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
       {
         $match: {
           $and: [
-            { userId: { $ne: new Types.ObjectId(req.userId) } },
+            // { userId: { $ne: new Types.ObjectId(req.userId) } },
             { clientId: { $in: allowedClientIds } },
           ],
         },
