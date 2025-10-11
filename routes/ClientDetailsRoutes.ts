@@ -18,7 +18,7 @@ const router = Router();
 // CRUD Routes
 router.post("/", authMiddleware, createClient); // Create a new client
 // router.get("/users-for-clients",authMiddleware , getUsersForClientList); // Fetch users for client list
-router.get("/my-clients-list", authMiddleware, getClientsForUser);
+router.get("/my-clients-list/:teamId", authMiddleware, getClientsForUser);
 router.get("/get-all-clients", authMiddleware, getAllClients); // Get all clients
 router.get("/search-clients", authMiddleware, searchClients);
 router.get("/:clientId", authMiddleware, getClientById); // Get a client by ID

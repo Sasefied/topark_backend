@@ -1,5 +1,5 @@
 import { Request, RequestHandler, Response } from "express";
-import mongoose, { Types } from "mongoose";
+import mongoose, { Types, PipelineStage } from "mongoose";
 import Inventory from "../schemas/Inventory";
 import { AdminProduct } from "../schemas/AdminProduct";
 import { responseHandler } from "../utils/responseHandler";
@@ -13,20 +13,18 @@ const getAllInventories: RequestHandler = async (req, res) => {
     const { page = 1, limit = 10, search = "" } = req.query;
 
     if (!req.userId || !mongoose.Types.ObjectId.isValid(req.userId)) {
-      res.status(401).json({ message: "Invalid or missing userId" });
+      return res.status(401).json({ message: "Invalid or missing userId" });
     }
 
-    const matchStage: any = {
-      userId: { $eq: new Types.ObjectId(req.userId) },
-    };
+    const userObjectId = new Types.ObjectId(req.userId);
 
-    if (search) {
-      matchStage["adminProduct.productName"] = {
-        $regex: search,
-        $options: "i",
-      };
-    }
-    const inventoryAggregate = Inventory.aggregate([
+    // Build the aggregation stages dynamically for optimization
+    const stages: PipelineStage[] = [
+      {
+        $match: {
+          userId: { $eq: userObjectId },
+        },
+      },
       {
         $lookup: {
           from: "adminproducts",
@@ -41,6 +39,22 @@ const getAllInventories: RequestHandler = async (req, res) => {
           preserveNullAndEmptyArrays: true,
         },
       },
+    ];
+
+    // Add search match after adminProduct lookup if search is provided
+    if (search) {
+      stages.push({
+        $match: {
+          "adminProduct.productName": {
+            $regex: search,
+            $options: "i",
+          },
+        },
+      } as PipelineStage);
+    }
+
+    // Continue with other stages
+    stages.push(
       {
         $lookup: {
           from: "clients",
@@ -61,14 +75,75 @@ const getAllInventories: RequestHandler = async (req, res) => {
         },
       },
       {
-        $match: matchStage,
+        $lookup: {
+          from: "users",
+          let: {
+            supplierUserId: { $arrayElemAt: ["$client.client.userId", 0] },
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$supplierUserId"] },
+              },
+            },
+            {
+              $project: {
+                _id: 1,
+                firstName: 1,
+                lastName: 1,
+              },
+            },
+          ],
+          as: "supplierUser",
+        },
+      },
+      {
+        $addFields: {
+          supplierName: {
+            $cond: {
+              if: { $gt: [{ $size: "$supplierUser" }, 0] },
+              then: {
+                $concat: [
+                  { $arrayElemAt: ["$supplierUser.firstName", 0] },
+                  " ",
+                  { $arrayElemAt: ["$supplierUser.lastName", 0] },
+                ],
+              },
+              else: null,
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "orderitems",
+          localField: "orderItemId",
+          foreignField: "_id",
+          as: "orderItem",
+        },
+      },
+      {
+        $unwind: {
+          path: "$orderItem",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $addFields: {
+          outstandingPrice: {
+            $ifNull: ["$orderItem.outstandingPrice", 0],
+          },
+        },
       },
       {
         $project: {
           client: 0,
+          supplierUser: 0,
         },
-      },
-    ]);
+      }
+    );
+
+    const inventoryAggregate = Inventory.aggregate(stages);
 
     const inventories = await (Inventory as any).aggregatePaginate(
       inventoryAggregate,
@@ -91,105 +166,6 @@ const getAllInventories: RequestHandler = async (req, res) => {
       .json({ message: "Error fetching inventories", error: error.message });
   }
 };
-
-// const addStockOnInventory: RequestHandler = async (req, res) => {
-//   try {
-//     const {
-//       clientId,
-//       adminProductId,
-//       grade,
-//       pricePerUnit,
-//       qtyInStock,
-//       qtyIncoming,
-//       sourceCountry,
-//       ccy,
-//       buyingPrice,
-//       tradingPrice,
-//     } = req.body;
-
-//     // Validate required fields
-//     if (
-//       !adminProductId ||
-//       !grade ||
-//       !pricePerUnit ||
-//       qtyInStock === undefined ||
-//       qtyIncoming === undefined ||
-//       !sourceCountry ||
-//       !ccy ||
-//       !buyingPrice ||
-//       !tradingPrice
-//     ) {
-//       res.status(400).json({ message: "All fields are required" });
-//       return;
-//     }
-
-//     // Validate ObjectId fields
-//     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
-//       res.status(400).json({ message: "Invalid adminProductId format" });
-//       return;
-//     }
-
-//     // Validate referenced documents
-//     const product = await AdminProduct.findById(adminProductId);
-//     if (!product) {
-//       res.status(404).json({ message: "Product not found" });
-//       return;
-//     }
-
-//     // const existedInventoryProduct = await Inventory.findOne({
-//     //   userId: req.userId,
-//     //   adminProductId,
-//     // });
-
-//     // if (existedInventoryProduct) {
-//     //   await Inventory.updateOne(
-//     //     {
-//     //       _id: existedInventoryProduct._id,
-//     //     },
-//     //     {
-//     //       $inc: {
-//     //         qtyInStock,
-//     //         qtyIncoming,
-//     //       },
-//     //       $set: {
-//     //         pricePerUnit,
-//     //         sourceCountry,
-//     //         ccy,
-//     //         buyingPrice,
-//     //         tradingPrice,
-//     //       },
-//     //     }
-//     //   );
-//     // }
-//     //  else {
-
-//     // }
-//     await Inventory.create({
-//         userId: req.userId,
-//         clientId: clientId || req.userId,
-//         adminProductId,
-//         grade: grade.toUpperCase(),
-//         pricePerUnit,
-//         qtyInStock,
-//         qtyIncoming,
-//         sourceCountry: sourceCountry.toUpperCase(),
-//         ccy: ccy.toUpperCase(),
-//         buyingPrice,
-//         tradingPrice,
-//       });
-
-//     res.status(200).json({ message: "Stock added to inventory successfully" });
-//   } catch (error: any) {
-//     console.error(
-//       "Error adding stock to inventory:",
-//       error.message,
-//       error.stack
-//     );
-//     res
-//       .status(400)
-//       .json({ message: error.message || "Error adding stock to inventory" });
-//   }
-// };
 
 const getAllProductNames: RequestHandler = async (req, res) => {
   try {
@@ -390,7 +366,6 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       countryOfOrigin,
       variety,
     } = req.body;
-
 
     // Validate ObjectId fields
     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
@@ -652,7 +627,10 @@ const updateInventoryById = asyncHandler(
     }
 
     // Validate vat
-    if (vat !== undefined && (isNaN(parseFloat(vat as any)) || parseFloat(vat as any) < 0)) {
+    if (
+      vat !== undefined &&
+      (isNaN(parseFloat(vat as any)) || parseFloat(vat as any) < 0)
+    ) {
       throw new BadRequestError("VAT must be a non-negative number");
     }
 
@@ -677,8 +655,8 @@ const updateInventoryById = asyncHandler(
 
     // Repopulate after save
     const populatedInventory = await Inventory.findById(id).populate({
-      path: 'adminProductId',
-      select: 'productName productAlias productType productCode variety'
+      path: "adminProductId",
+      select: "productName productAlias productType productCode variety",
     });
 
     responseHandler(res, 200, "Inventory updated successfully", "success", {
@@ -694,8 +672,8 @@ const getInventoryById = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const inventory = await Inventory.findById(id).populate({
-    path: 'adminProductId',
-    select: 'productName productAlias productType productCode variety'
+    path: "adminProductId",
+    select: "productName productAlias productType productCode variety",
   });
   if (!inventory) {
     throw new BadRequestError("Inventory not found");

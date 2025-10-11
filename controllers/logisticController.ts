@@ -26,11 +26,13 @@ import Inventory from "../schemas/Inventory";
  */
 const getAllLogisticOrders = async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, teamId } = req.query;
+    console.log("tem", teamId);
 
     const orderAggregate = Order.aggregate([
       {
         $match: {
+          teamId: new Types.ObjectId(teamId as string),
           userId: new Types.ObjectId(req.userId),
         },
       },
@@ -423,6 +425,7 @@ const receivedOkLogisticOrderItem = asyncHandler(
              userId: req.userId,
              clientId: inventory.clientId,
              adminProductId: inventory.adminProductId,
+             orderItemId: orderItem._id,
              // grade: inventory.,
              pricePerUnit: orderItem.price,
              qtyInStock: orderItem.quantity,

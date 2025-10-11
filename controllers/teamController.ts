@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
-import Team from "../schemas/Team";
+import Team, { ITeam } from "../schemas/Team";
 import User from "../schemas/User";
 import config from "../config";
 import sendEmail from "../utils/mail";
@@ -693,5 +693,51 @@ export const acceptInvitation = async (req: Request, res: Response) => {
       return responseHandler(res, 400, "Invalid invitation token");
     }
     return responseHandler(res, 500, "Internal server error");
+  }
+};
+
+
+
+
+export const getAllTeamNames = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userRoles, userEmail, userId } = req;
+
+    // Validate input
+    if (!userRoles || !userEmail || !userId) {
+      res.status(400).json({ message: "Missing required user information" });
+      return;
+    }
+
+    let teams = [];
+
+    // Check if user has Admin role
+    if (userRoles.includes("Admin")) {
+      // Fetch teams where user is the creator
+      teams = await Team.find({ createdBy: new mongoose.Types.ObjectId(userId) })
+    
+        .lean();
+    } else {
+      // Fetch teams where user is a member
+      teams = await Team.find({ "members.email": userEmail })
+        
+        .lean();
+    }
+
+  
+    // Check if any teams were found
+    if (teams.length === 0) {
+      res.status(404).json({ message: "No teams found" });
+      return;
+    }
+
+    // Return team names
+    res.status(200).json({ teams });
+  } catch (error) {
+    console.error("Error fetching team names:", error);
+    res.status(500).json({ message: "Server error while fetching team names" });
   }
 };

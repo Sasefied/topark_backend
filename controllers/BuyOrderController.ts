@@ -25,7 +25,7 @@ const createBuyOrder = async (
         "error"
       );
     }
-    const { inventoryId, quantity, price, deliveryDate } = req.body;
+    const { inventoryId, quantity, price, deliveryDate, extraCostPrice } = req.body;
 
     if (!inventoryId || !Types.ObjectId.isValid(inventoryId)) {
       return responseHandler(
@@ -74,6 +74,7 @@ const createBuyOrder = async (
           inventoryId,
           quantity,
           price,
+          extraCostPrice,
           deliveryDate,
         },
       },
@@ -113,8 +114,10 @@ const createBulkBuyOrders = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { orders } = req.body;
+    const { orders, teamId } = req.body;
     const userId = req.userId;
+
+    console.log("teamID", teamId)
 
     if (!userId || !Types.ObjectId.isValid(userId)) {
       return responseHandler(
@@ -138,6 +141,7 @@ const createBulkBuyOrders = async (
     session.startTransaction();
 
     try {
+     
       const createdOrders = [];
       for (const order of orders) {
         const {
@@ -221,6 +225,7 @@ const createBulkBuyOrders = async (
         const newOrder = new Order({
           userId: new Types.ObjectId(userId),
           clientId: clientId ? new Types.ObjectId(clientId) : null,
+          teamId: new Types.ObjectId(teamId),
           total: quantity * price,
           outstandingTotal: quantity * price,
           orderStatus: orderStatus || "Requested",

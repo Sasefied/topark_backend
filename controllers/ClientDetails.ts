@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 import Inventory, { IInventory } from "../schemas/Inventory";
 import { AdminProduct } from "../schemas/AdminProduct";
 import { BadRequestError } from "../utils/errors";
+import Team from "../schemas/Team";
 
 const excludeId = (doc: any) => {
   const { _id, ...rest } = doc.toObject();
@@ -596,9 +597,6 @@ export const addClientToUser = async (
   }
 };
 
-
-
-
 interface PopulatedCreatedBy {
   _id: string;
   firstName: string;
@@ -612,122 +610,155 @@ interface PopulatedClient extends Omit<IClient, "createdBy"> {
   createdBy: PopulatedCreatedBy | null;
 }
 
-export const getClientsForUser = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const getClientsForUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.userId;
 
     console.log("getClientsForUser - userId:", userId);
 
-    if (!userId) {
-      responseHandler(res, 400, "Missing userId", "error");
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      responseHandler(res, 400, "Missing or invalid userId", "error");
       return;
     }
 
-    // Verify user exists
+    // Fetch the logged-in user
     const user = await User.findById(userId);
     if (!user) {
-      console.warn("getClientsForUser - User not found:", userId);
-      responseHandler(res, 400, "Invalid user", "error");
+      responseHandler(res, 404, "User not found", "error");
       return;
     }
 
-    const myClientDoc = await MyClient.findOne({
-      userId: userId.toString(),
-    }).populate({
-      path: "clientId",
-      select:
-        "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress countryName clientNotes companyReferenceNumber creditLimit preference supplier relatedClientIds createdBy",
-      populate: {
-        path: "createdBy",
-        select: "firstName lastName companyName companyReferenceNumber",
+    // Find the team where this user is a member
+    const team = await Team.findOne({ "members.email": user.email });
+    if (!team) {
+      responseHandler(res, 404, "Team not found for this user", "error");
+      return;
+    }
+
+    // Get current member info
+    const memberInfo = team.members?.find((m) => m.email === user.email);
+    if (!memberInfo) {
+      responseHandler(res, 400, "User not found in team members", "error");
+      return;
+    }
+
+    // Determine if user is admin
+    const isAdmin = memberInfo.roles.includes("Admin");
+
+    // Define variable with correct type
+    let targetUserId: Types.ObjectId;
+
+    if (isAdmin) {
+      // If Admin → show their own clients
+      targetUserId = new Types.ObjectId(user._id);
+      // console.log(Admin user (${user.email}) - showing own clients);
+    } else {
+      // If not Admin → find team admin
+      const adminMember = team.members?.find((m) => m.roles.includes("Admin"));
+      if (!adminMember) {
+        responseHandler(res, 404, "Team admin not found", "error");
+        return;
+      }
+
+      const adminUser = await User.findOne({ email: adminMember.email });
+      if (!adminUser) {
+        responseHandler(res, 404, "Admin user not found in system", "error");
+        return;
+      }
+
+      targetUserId = new Types.ObjectId(adminUser._id);
+      console.log(`Team member (${user.email}) - showing admin (${adminUser.email}) clients`);
+    }
+
+    // Fetch all clients created by the target user (admin or self)
+    const pipeline = [
+      { $match: { userId: targetUserId.toString() } },
+      {
+        $lookup: {
+          from: "clients",
+          localField: "clientId",
+          foreignField: "_id",
+          as: "clients",
+        },
       },
-    });
+      { $unwind: { path: "$clients", preserveNullAndEmptyArrays: false } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "clients.createdBy",
+          foreignField: "_id",
+          as: "clients.createdBy",
+        },
+      },
+      { $unwind: { path: "$clients.createdBy", preserveNullAndEmptyArrays: true } },
+      { $replaceRoot: { newRoot: "$clients" } },
+      {
+        $project: {
+          _id: 1,
+          userId: 1,
+          clientId: 1,
+          clientName: 1,
+          clientEmail: 1,
+          registeredName: 1,
+          workanniversary: 1,
+          registeredAddress: 1,
+          deliveryAddress: 1,
+          countryName: 1,
+          clientNotes: 1,
+          companyReferenceNumber: 1,
+          relatedClientIds: 1,
+          creditLimit: 1,
+          preference: 1,
+          supplier: 1,
+          createdBy: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ];
 
-    if (
-      !myClientDoc ||
-      !myClientDoc.clientId ||
-      (myClientDoc.clientId as any[]).length === 0
-    ) {
-      responseHandler(res, 200, "No clients found for this user", "success", {
-        count: 0,
-        clients: [],
-      });
-      return;
-    }
+    const clients: any[] = await (MyClient as any).aggregate(pipeline);
 
-    // Validate populated clients and map to plain object
-    const clients = (myClientDoc.clientId as any[])
-      .filter((client: any) => {
-        if (!client.clientName || !client.clientId) {
-          console.warn("getClientsForUser - Invalid client data:", client);
-          return false;
-        }
-        return true;
-      })
-      .map((client: any) => ({
-        _id: client._id.toString(),
-        userId: client.userId?.toString() || "",
-        clientId: client.clientId,
-        clientName: client.clientName,
-        clientEmail: client.clientEmail,
-        registeredName: client.registeredName,
-        workanniversary: client.workanniversary
-          ? client.workanniversary.toISOString()
-          : null,
-        registeredAddress: client.registeredAddress || "",
-        deliveryAddress: client.deliveryAddress || "",
-        countryName: client.countryName || "",
-        clientNotes: client.clientNotes || "",
-        companyReferenceNumber: client.companyReferenceNumber || "",
-        relatedClientIds: client.relatedClientIds
-          ? client.relatedClientIds.map((id: any) => id.toString())
-          : [],
-        creditLimit: client.creditLimit
-          ? {
-              amount: client.creditLimit.amount || 0,
-              period: client.creditLimit.period || 0,
-            }
-          : { amount: 0, period: 0 },
-        preference: client.preference || "Client",
-        supplier: client.supplier
-          ? {
-              creditLimitAmount: client.supplier.creditLimitAmount || 0,
-              creditLimitDays: client.supplier.creditLimitDays || 0,
-              invoiceEmail: client.supplier.invoiceEmail || "",
-              returnToSupplierEmail:
-                client.supplier.returnToSupplierEmail || "",
-              quantityIssueEmail: client.supplier.quantityIssueEmail || "",
-              qualityIssueEmail: client.supplier.qualityIssueEmail || "",
-              deliveryDelayIssueEmail:
-                client.supplier.deliveryDelayIssueEmail || "",
-            }
-          : undefined,
-        createdBy: client.createdBy
-          ? {
-              _id: client.createdBy._id?.toString() || "",
-              firstName: client.createdBy.firstName || "",
-              lastName: client.createdBy.lastName || "",
-              companyName: client.createdBy.companyName || "",
-              companyReferenceNumber:
-                client.createdBy.companyReferenceNumber || "",
-            }
-          : null,
-        createdAt: client.createdAt
-          ? client.createdAt.toISOString()
-          : undefined,
-        updatedAt: client.updatedAt
-          ? client.updatedAt.toISOString()
-          : undefined,
-      }));
-
-    const count = clients.length;
+    // Map for cleaner response
+    const mappedClients = clients.map((client) => ({
+      _id: client._id?.toString(),
+      userId: client.userId?.toString() || "",
+      clientId: client.clientId,
+      clientName: client.clientName,
+      clientEmail: client.clientEmail,
+      registeredName: client.registeredName,
+      workanniversary: client.workanniversary
+        ? new Date(client.workanniversary).toISOString()
+        : null,
+      registeredAddress: client.registeredAddress || "",
+      deliveryAddress: client.deliveryAddress || "",
+      countryName: client.countryName || "",
+      clientNotes: client.clientNotes || "",
+      companyReferenceNumber: client.companyReferenceNumber || "",
+      relatedClientIds:
+        client.relatedClientIds?.map((id: any) => id.toString()) || [],
+      creditLimit: client.creditLimit || { amount: 0, period: 0 },
+      preference: client.preference || "Client",
+      supplier: client.supplier || undefined,
+      createdBy: client.createdBy
+        ? {
+            _id: client.createdBy._id?.toString() || "",
+            firstName: client.createdBy.firstName || "",
+            lastName: client.createdBy.lastName || "",
+            companyName: client.createdBy.companyName || "",
+            companyReferenceNumber:
+              client.createdBy.companyReferenceNumber || "",
+          }
+        : null,
+      createdAt: client.createdAt?.toISOString(),
+      updatedAt: client.updatedAt?.toISOString(),
+    }));
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
-      count,
-      clients,
+      isAdmin,
+      count: mappedClients.length,
+      clients: mappedClients,
     });
   } catch (error: any) {
     console.error("getClientsForUser - Error:", {
@@ -985,8 +1016,25 @@ export const searchClients = async (
         "firstName lastName companyName companyReferenceNumber"
       );
 
+    const users = await User.find({
+      $and: [
+        {
+          $or: [
+            { firstName: { $regex: searchRegex } },
+            { lastName: { $regex: searchRegex } },
+            { companyName: { $regex: searchRegex } },
+            { companyReferenceNumber: { $regex: searchRegex } },
+          ],
+        },
+        { email: { $ne: req.userEmail } }, // exclude self
+        { _id: { $nin: excludedClientIds } }, // exclude already added clients
+      ],
+    }).select(
+      "firstName lastName companyName email companyReferenceNumber createdAt updatedAt"
+    );
+
     // Validate clients and map to plain object
-    const validClients = clients
+    const validClientsArray = clients
       .filter((client) => {
         if (!client.clientName || !client.clientId) {
           console.warn("searchClients - Invalid client data:", client);
@@ -1050,11 +1098,24 @@ export const searchClients = async (
           : undefined,
       }));
 
+    const validUsers = users.map((user: any) => ({
+      _id: user._id.toString(),
+      type: "user",
+      userId: user._id.toString(),
+      clientName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+      clientEmail: user.email,
+      registeredName: user.companyName || "",
+      companyReferenceNumber: user.companyReferenceNumber || "",
+      createdAt: user.createdAt?.toISOString(),
+      updatedAt: user.updatedAt?.toISOString(),
+    }));
+
+    const validClients = [...validClientsArray, ...validUsers];
     const count = validClients.length;
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
       count,
-      validClients,
+      validClients
     });
   } catch (error: any) {
     console.error("searchClients - Error:", {
@@ -1156,7 +1217,6 @@ export const getClientById = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-
 
 export const updateClient = async (
   req: Request,
@@ -1438,7 +1498,10 @@ export const updateClient = async (
     responseHandler(res, 500, "Internal server error", "error");
   }
 };
-export const deleteClient = async (req: Request, res: Response): Promise<void> => {
+export const deleteClient = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -1517,23 +1580,28 @@ export const deleteClient = async (req: Request, res: Response): Promise<void> =
 
     await session.commitTransaction();
     session.endSession();
-    responseHandler(res, 200, "Client and associated data removed successfully", "success");
-} catch (error: any) {
-await session.abortTransaction();
-session.endSession();
-console.error("deleteClient - Error:", {
-message: error.message,
-stack: error.stack,
-userId: req.userId,
-clientId: req.body.clientId,
-});
-responseHandler(
-res,
-error.message.includes("not found") ? 404 : 400,
-error.message,
-"error"
-);
-}
+    responseHandler(
+      res,
+      200,
+      "Client and associated data removed successfully",
+      "success"
+    );
+  } catch (error: any) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("deleteClient - Error:", {
+      message: error.message,
+      stack: error.stack,
+      userId: req.userId,
+      clientId: req.body.clientId,
+    });
+    responseHandler(
+      res,
+      error.message.includes("not found") ? 404 : 400,
+      error.message,
+      "error"
+    );
+  }
 };
 export const getProductByClientId = async (
   req: Request,
@@ -1599,8 +1667,8 @@ export const getProductByClientId = async (
           _id: { $toString: "$_id" },
           adminProductId: { $toString: "$adminProductId" },
           adminProductName: { $ifNull: ["$adminProduct.productName", null] },
-          productCode: {$ifNull: ["$adminProduct.productCode", null]},
-          alias:  { $ifNull: ["$adminProduct.productAlias", null] },
+          productCode: { $ifNull: ["$adminProduct.productCode", null] },
+          alias: { $ifNull: ["$adminProduct.productAlias", null] },
           productType: { $ifNull: ["$adminProduct.productType", null] },
           size: 1,
           color: { $ifNull: ["$color", null] },

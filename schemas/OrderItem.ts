@@ -9,6 +9,7 @@ export interface IOrderItem extends Document {
   price: number;
   outstandingPrice: number;
   deliveryDate: Date;
+  extraCostPrice: Number;
   status: (typeof OrderItemStatusEnum)[keyof typeof OrderItemStatusEnum];
 }
 
@@ -45,6 +46,7 @@ const orderItemSchema: Schema<IOrderItem> = new Schema(
       required: true,
       default: Date.now,
     },
+     extraCostPrice: { type: Number, default: 0 },
     status: {
       type: String,
       enum: AvailableOrderItemStatuses,

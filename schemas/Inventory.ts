@@ -1,5 +1,3 @@
-
-
 import mongoose, { Document, Schema, Model } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
@@ -8,6 +6,7 @@ export interface IInventory extends Document {
   userId: mongoose.Schema.Types.ObjectId;
   adminProductId: mongoose.Schema.Types.ObjectId;
   clientId?: mongoose.Schema.Types.ObjectId;
+  orderItemId: mongoose.Schema.Types.ObjectId;
   size: string;
   color?: string | null;
   vat?: number;
@@ -51,6 +50,11 @@ const inventorySchema: Schema<IInventory> = new Schema(
       ref: "Client",
       required: false,
     },
+    orderItemId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OrderItem",
+      required: false,
+    },
     size: {
       type: String,
       required: true,
@@ -85,7 +89,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
       required: true,
     },
     sellByQuantity: { type: String, required: false, default: "" },
-    
+
     shelfLife: {
       type: Number,
       required: true,
@@ -111,7 +115,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
         required: true,
       },
     ],
-  
+
     countryOfOrigin: {
       type: String,
       required: true,
