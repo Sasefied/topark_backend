@@ -1005,7 +1005,10 @@ export const searchClients = async (
     }
 
     const myClientDoc = await MyClient.findOne({ userId: userId.toString() });
+    console.log("MyClient document:", myClientDoc);
     const excludedClientIds = myClientDoc?.clientId || [];
+    const excludedClientUserIds =
+      (myClientDoc?.client?.map((c) => c.userId).filter((id) => id) ?? []) as unknown as Types.ObjectId[];
 
     const searchRegex = new RegExp(searchTerm, "i"); // Case-insensitive search
     const clients = await Client.find({
@@ -1030,6 +1033,8 @@ export const searchClients = async (
         "firstName lastName companyName companyReferenceNumber"
       );
 
+    console.log("Found clients:", clients);
+
     const users = await User.find({
       $and: [
         {
@@ -1041,7 +1046,7 @@ export const searchClients = async (
           ],
         },
         { email: { $ne: req.userEmail } }, // exclude self
-        { _id: { $nin: excludedClientIds } }, // exclude already added clients
+        { _id: { $nin: excludedClientUserIds } }, // exclude already added clients
       ],
     }).select(
       "firstName lastName companyName email companyReferenceNumber createdAt updatedAt"
