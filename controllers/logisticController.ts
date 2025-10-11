@@ -14,6 +14,8 @@ import { getStaticFilePath } from "../utils/helpers";
 import OrderItem from "../schemas/OrderItem";
 import { OrderItemStatusEnum } from "../api/constants";
 import Inventory from "../schemas/Inventory";
+import Client from "../schemas/ClientDetails";
+import sendEmail from "../utils/mail";
 
 /**
  * Get all logistic orders
@@ -281,22 +283,14 @@ const searchLogisticOrders = async (req: Request, res: Response) => {
 
 /**
  * Report an issue with a logistic order item
- * @param {string} orderItemId - _id of the order item
- * @param {object} req.body - issue details
- * @param {string} issueCategory - category of the issue
- * @param {number} receivedQuantity - quantity received
- * @param {string} proof - proof of issue (e.g. image)
- * @param {string} additionalNotes - additional notes about the issue
- * @param {boolean} productUnusable - whether the product is unusable
- * @param {string} issue - description of the issue
- * @param {boolean} productCompletelyDifferent - whether the product is completely different
  * @route POST /api/logistics/:orderItemId/report
  * @access Private
- * @returns {Promise<void>}
  */
 const reportLogisticOrderItem = async (req: Request, res: Response) => {
-  const { orderItemId } = req.params;
+  const orderItemIdParam = req.params.orderItemId;
+
   const {
+    clientId,
     orderId,
     issueCategory,
     receivedQuantity,
@@ -305,54 +299,154 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
     productUnAcceptable,
     issue,
     productCompletelyDifferent,
-  } = req.body;
+  } = req.body as {
+    clientId?: string;
+    orderId?: string;
+    issueCategory?: string;
+    receivedQuantity?: number | string;
+    additionalNotes?: string;
+    productUnusable?: boolean;
+    productUnAcceptable?: boolean;
+    issue?: string;
+    productCompletelyDifferent?: boolean;
+  };
 
   const session = await mongoose.startSession();
   await session.startTransaction();
+
   try {
-    if (!req.file?.path) {
+    // Validate file/proof
+    if (!req.file?.path || !req.file.filename) {
       throw new BadRequestError("Proof is required");
+    }
+
+    // Validate and normalize IDs
+    if (
+      !orderItemIdParam ||
+      !mongoose.Types.ObjectId.isValid(orderItemIdParam)
+    ) {
+      throw new BadRequestError("Invalid orderItemId");
+    }
+    if (!clientId || !mongoose.Types.ObjectId.isValid(clientId)) {
+      throw new BadRequestError("Invalid clientId");
+    }
+
+    // Validate category
+    const allowedCategories = [
+      "Quantity mismatch",
+      "Quality issue",
+      "Wrong Variety",
+    ] as const;
+    if (
+      !issueCategory ||
+      !allowedCategories.includes(
+        issueCategory as (typeof allowedCategories)[number]
+      )
+    ) {
+      throw new BadRequestError("Invalid issue category");
+    }
+
+    // Normalize quantity
+    const receivedQtyNum =
+      typeof receivedQuantity === "string"
+        ? Number(receivedQuantity)
+        : receivedQuantity;
+    if (
+      receivedQtyNum == null ||
+      Number.isNaN(receivedQtyNum) ||
+      receivedQtyNum < 0
+    ) {
+      throw new BadRequestError("Invalid receivedQuantity");
     }
 
     const proof = getStaticFilePath(req, req.file.filename);
 
+    const client = await Client.findById(clientId).session(session);
+    if (!client) {
+      throw new NotFoundError("Client not found");
+    }
+    
+    const ISSUE_CATEGORIES = {
+      "Quantity mismatch": client?.supplier?.quantityIssueEmail,
+      "Quality issue": client?.supplier?.qualityIssueEmail,
+      "Wrong Variety": client?.supplier?.deliveryDelayIssueEmail,
+    } as const;
+
+    const orderItemObjectId = new mongoose.Types.ObjectId(orderItemIdParam);
+
+    // Upsert reported issue and mark order item status
     await Promise.all([
       ReportedIssue.updateOne(
-        { orderItemId },
+        { orderItemId: orderItemObjectId },
         {
           $set: {
-            orderItemId,
+            orderItemId: orderItemObjectId,
             orderId,
             issueCategory,
-            receivedQuantity,
+            receivedQuantity: receivedQtyNum,
             proof,
             additionalNotes,
-            productUnusable,
-            productUnAcceptable,
+            productUnusable: !!productUnusable,
+            productUnAcceptable: !!productUnAcceptable,
             issue,
-            productCompletelyDifferent,
+            productCompletelyDifferent: !!productCompletelyDifferent,
           },
         },
         { upsert: true }
       ).session(session),
 
       OrderItem.updateOne(
-        { _id: orderItemId },
-        {
-          $set: {
-            status: OrderItemStatusEnum.HAS_ISSUES,
-          },
-        }
+        { _id: orderItemObjectId },
+        { $set: { status: OrderItemStatusEnum.HAS_ISSUES } }
       ).session(session),
     ]);
 
+    // Commit the transaction before sending the email
     await session.commitTransaction();
+
+    // Send email notification (best-effort, do not fail the request if email fails)
+    const toEmails =
+      ISSUE_CATEGORIES[issueCategory as keyof typeof ISSUE_CATEGORIES];
+    if (toEmails) {
+      const recipients = Array.isArray(toEmails)
+        ? toEmails.filter(Boolean).join(",")
+        : toEmails;
+
+      const html = [
+        `<p>An issue has been reported for order item <strong>${orderItemIdParam}</strong>.</p>`,
+        "<h4>Issue Details</h4>",
+        "<ul>",
+        `<li>Category: ${issueCategory}</li>`,
+        `<li>Received Quantity: ${receivedQtyNum}</li>`,
+        additionalNotes ? `<li>Additional Notes: ${additionalNotes}</li>` : "",
+        `<li>Product Unusable: ${!!productUnusable}</li>`,
+        `<li>Product Unacceptable: ${!!productUnAcceptable}</li>`,
+        issue ? `<li>Issue Description: ${issue}</li>` : "",
+        `<li>Product Completely Different: ${!!productCompletelyDifferent}</li>`,
+        `</ul>`,
+        `<p>Proof: <a href="${proof}" target="_blank" rel="noreferrer">${proof}</a></p>`,
+      ].join("");
+
+      await sendEmail({
+        to: recipients,
+        subject: `New Reported Issue: ${issueCategory}`,
+        html,
+        attachments: req.file?.path
+          ? [
+              {
+                filename: (req.file as any).originalname || req.file.filename,
+                path: req.file.path,
+              },
+            ]
+          : undefined,
+      });
+    }
 
     responseHandler(res, 200, "Issue reported successfully", "success");
   } catch (error: any) {
     await session.abortTransaction();
     console.log("Error reporting logistic order:", error);
-    throw new BadRequestError(error.message);
+    throw new BadRequestError(error.message || "Failed to report issue");
   } finally {
     await session.endSession();
   }
