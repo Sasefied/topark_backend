@@ -20,7 +20,7 @@ const router = Router();
 
 router
   .get("/", getAllInventoriesValidator(), validate, getAllInventories)
-  .post("/", addStockOnInventoryValidator(), addStockOnInventory)
+  .post("/", addStockOnInventory)
   .get("/products/names", validate, getAllProductNames)
   .get("/products/:productId", validate, getProductById)
   .get("/delivered-orders", getDeliveredOrders)

@@ -7,6 +7,7 @@ import Order from "../schemas/Order";
 import asyncHandler from "express-async-handler";
 import Client from "../schemas/ClientDetails";
 import { BadRequestError } from "../utils/errors";
+import Team from "../schemas/Team";
 
 const getAllInventories: RequestHandler = async (req, res) => {
   try {
@@ -377,6 +378,7 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
     const {
       userId,
       clientId,
+      teamId, // Add this
       adminProductId,
       size,
       color,
@@ -388,14 +390,23 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       countryOfOrigin,
       variety,
     } = req.body;
+    
+    console.log("teamId", teamId)
+
+    // Validate teamId
+    if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) {
+      return res.status(400).json({ message: "Valid teamId is required" });
+    }
+
+    // Validate userId
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Valid userId is required" });
+    }
 
     // Validate ObjectId fields
     if (!mongoose.Types.ObjectId.isValid(adminProductId)) {
       return res.status(400).json({ message: "Invalid adminProductId format" });
     }
-    // if (clientId && !mongoose.Types.ObjectId.isValid(clientId)) {
-    //   return res.status(400).json({ message: "Invalid clientId format" });
-    // }
 
     // Validate referenced documents
     const product = await AdminProduct.findById(adminProductId);
@@ -403,9 +414,18 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       return res.status(400).json({ message: "Product not found" });
     }
 
+    // Validate team exists
+    const team = await Team.findById(teamId); // Assuming you have a Team model
+    if (!team) {
+      return res.status(400).json({ message: "Team not found" });
+    }
+
     // Validate client if clientId is provided
     let client = null;
     if (clientId) {
+      if (!mongoose.Types.ObjectId.isValid(clientId)) {
+        return res.status(400).json({ message: "Invalid clientId format" });
+      }
       client = await Client.findById(clientId);
       if (!client) {
         return res.status(400).json({ message: "Client not found" });
@@ -414,18 +434,8 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
 
     // Validate season
     const validMonths = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
     ];
     if (
       !Array.isArray(season) ||
@@ -438,16 +448,8 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
 
     // Validate sellBy
     const validSellByTypes = [
-      "Box",
-      "Kg",
-      "Unit",
-      "Dozen",
-      "Liter",
-      "Packet",
-      "Gram",
-      "Pound",
-      "Ounce",
-      "Milliliter",
+      "Box", "Kg", "Unit", "Dozen", "Liter", "Packet", 
+      "Gram", "Pound", "Ounce", "Milliliter",
     ];
     if (!validSellByTypes.includes(sellBy)) {
       return res.status(400).json({
@@ -468,15 +470,16 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
     }
 
     // Validate vat
-    if (isNaN(parseFloat(vat)) || parseFloat(vat) < 0) {
+    if (vat !== undefined && (isNaN(parseFloat(vat as any)) || parseFloat(vat as any) < 0)) {
       return res
         .status(400)
         .json({ message: "VAT must be a non-negative number" });
     }
 
-    // Create inventory entry
+    // Create inventory entry - NOW INCLUDING teamId
     const inventoryEntry = await Inventory.create({
       userId,
+      teamId, // Add this
       clientId,
       adminProductId,
       size,
@@ -491,17 +494,16 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
     });
 
     // Update client's inventoryIds if clientId is provided
-    // if (clientId && client) {
-    //   await Client.findByIdAndUpdate(
-    //     clientId,
-    //     { $addToSet: { inventoryIds: inventoryEntry._id } }, // Add inventory ID to client's inventoryIds
-    //     { new: true }
-    //   );
-    // }
+    if (clientId && client) {
+      await Client.findByIdAndUpdate(
+        clientId,
+        { $addToSet: { inventoryIds: inventoryEntry._id } },
+        { new: true }
+      );
+    }
 
     return res.status(201).json({
-      message:
-        "Stock added to inventory and associated with client successfully",
+      message: "Stock added to inventory and associated with team successfully",
       inventory: inventoryEntry,
     });
   } catch (error: any) {
@@ -511,11 +513,10 @@ const addStockOnInventory: RequestHandler = async (req, res) => {
       error.stack
     );
     return res
-      .status(400)
+      .status(500)
       .json({ message: error.message || "Error adding stock to inventory" });
   }
 };
-
 const deleteInventoryById = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
