@@ -45,7 +45,7 @@ const teamMemberSchema: Schema = new Schema(
       enum: ["pending", "active", "inactive"],
       default: "pending",
     },
-    addedOn: { type: String },
+    addedOn: { type: Date, default:Date.now() },
   },
   { _id: true }
 );

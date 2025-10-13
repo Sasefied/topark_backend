@@ -41,7 +41,7 @@ export const saveTeamName = async ( req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const newTeam = new Team({teamName: teamName.trim(), createdBy: userId,members: [],addedOn: new Date(),});
+    const newTeam = new Team({teamName: teamName.trim(), createdBy: userId,members: [{email:creatorUser.email,roles:creatorUser.roles,status:creatorUser.status}],addedOn: new Date(),});
     await newTeam.save();
     
     const newteams = [...(creatorUser.teamId ?? []), newTeam._id]

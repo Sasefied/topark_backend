@@ -626,22 +626,17 @@ export const getClientsForUser = async (
 ): Promise<void> => {
   try {
     const userId = req.userId;
-
-    console.log("getClientsForUser - userId:", userId);
-
     if (!userId || !Types.ObjectId.isValid(userId)) {
       responseHandler(res, 400, "Missing or invalid userId", "error");
       return;
     }
 
-    // Fetch the logged-in user
     const user = await User.findById(userId);
     if (!user) {
       responseHandler(res, 404, "User not found", "error");
       return;
     }
 
-    // Find the team where this user is a member
     const team = await Team.findOne({ "members.email": user.email });
     if (!team) {
       responseHandler(res, 404, "Team not found for this user", "error");
