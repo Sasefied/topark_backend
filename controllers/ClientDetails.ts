@@ -10,6 +10,7 @@ import Inventory, { IInventory } from "../schemas/Inventory";
 import { AdminProduct } from "../schemas/AdminProduct";
 import { BadRequestError } from "../utils/errors";
 import Team from "../schemas/Team";
+import MyClientModel from "../schemas/MyClient";
 
 const excludeId = (doc: any) => {
   const { _id, ...rest } = doc.toObject();
@@ -528,9 +529,13 @@ export const addClientToUser = async (
     }
 
     // Validate client exists
-    const existingClient = await Client.findById(clientId);
+     let existingClient = await User.findById(clientId);
     if (!existingClient) {
-      responseHandler(res, 404, "Client not found", "error");
+      existingClient = await Client.findById(clientId);
+    }
+    
+    if (!existingClient) {
+      responseHandler(res, 404, "Client not found in both collection", "error");
       return;
     }
 
@@ -676,7 +681,7 @@ export const getClientsForUser = async (
 
       targetUserId = new Types.ObjectId(adminUser._id);
       console.log(
-        `Team member (${user.email}) - showing admin (${adminUser.email}) clients`
+       ` Team member (${user.email}) - showing admin (${adminUser.email}) clients`
       );
     }
 
@@ -759,19 +764,19 @@ export const getClientsForUser = async (
       creditLimit: client.creditLimit || { amount: 0, period: 0 },
       preference: client.preference || "Client",
       supplier: client.supplier || undefined,
-      createdBy: client.createdBy
+      createdBy: client?.createdBy
         ? {
-            _id: client.createdBy._id?.toString() || "",
-            firstName: client.createdBy.firstName || "",
-            lastName: client.createdBy.lastName || "",
-            companyName: client.createdBy.companyName || "",
+            _id: client?.createdBy._id?.toString() || "",
+            firstName: client?.createdBy?.firstName || "",
+            lastName: client?.createdBy?.lastName || "",
+            companyName: client?.createdBy?.companyName || "",
             companyReferenceNumber:
-              client.createdBy.companyReferenceNumber || "",
+              client?.createdBy?.companyReferenceNumber || "",
           }
         : null,
-      createdAt: client.createdAt?.toISOString(),
-      updatedAt: client.updatedAt?.toISOString(),
-      isOfflineUser: client.createdBy.isOfflineUser,
+      createdAt: client?.createdAt?.toISOString(),
+      updatedAt: client?.updatedAt?.toISOString(),
+      isOfflineUser: client?.createdBy?.isOfflineUser || false,
     }));
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
@@ -786,8 +791,9 @@ export const getClientsForUser = async (
       userId: req.userId,
     });
     responseHandler(res, 500, "Internal server error", "error");
-  }
+  }
 };
+
 
 export const getAllClients = async (
   req: Request,

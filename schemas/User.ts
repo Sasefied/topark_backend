@@ -12,7 +12,7 @@ export interface IUser extends Document {
   companyReferenceNumber?: string;
   consentGiven?: boolean;
   roles: string[];
-  teamId: mongoose.Types.ObjectId;
+  teamId: mongoose.Types.ObjectId[];
   status?: "pending" | "active" | "inactive";
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
@@ -43,7 +43,7 @@ const userSchema: Schema<IUser> = new Schema(
         default: ["Admin"],
       },
     ],
-    teamId: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
+    teamId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Team", default:[] }],
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
     isOfflineUser: { type: Boolean, default: false },

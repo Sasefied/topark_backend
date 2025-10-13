@@ -12,7 +12,7 @@ declare module "express-serve-static-core" {
     userEmail?: string;
     userOrgId?: string;
     userRoles?: string[];
-    userTeamId?: mongoose.Types.ObjectId;
+    userTeamId?: mongoose.Types.ObjectId[];
   }
 }
 

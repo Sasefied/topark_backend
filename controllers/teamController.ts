@@ -23,22 +23,13 @@ interface TeamMemberInput {
 
 // STEP 1: Save Team Name
 
-export const saveTeamName = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  const { teamName, teamId } = req.body;
-  console.log("team..", req.body);
+export const saveTeamName = async ( req: Request, res: Response): Promise<void> => {
+  const { teamName } = req.body;
   const userId = req.userId;
-  console.log("saveTeamName - Input:", { userId, teamName, teamId });
 
   if (!teamName || typeof teamName !== "string" || teamName.trim() === "") {
     console.log("saveTeamName - Error: Invalid team name");
-    responseHandler(
-      res,
-      400,
-      "Team name is required and must be a non-empty string"
-    );
+    responseHandler(res,400, "Team name is required and must be a non-empty string","error");
     return;
   }
 
@@ -46,96 +37,32 @@ export const saveTeamName = async (
     const creatorUser = await User.findById(userId);
     if (!creatorUser) {
       console.log("saveTeamName - Error: User not found");
-      responseHandler(res, 404, "User not found");
+      responseHandler(res, 404, "User not found","error");
       return;
     }
 
-    const sanitizedTeamName = teamName.trim().toLowerCase(); // Normalize team name for comparison
-    let savedTeam;
-
-    if (teamId) {
-      // Update existing team
-      const team = await Team.findById(teamId);
-      if (!team) {
-        console.log("saveTeamName - Error: Team not found for teamId", teamId);
-        responseHandler(res, 404, "Team not found.");
-        return;
-      }
-
-      team.teamName = teamName.trim(); // Store original case in database
-      savedTeam = await team.save();
-      console.log(
-        "saveTeamName - Team updated:",
-        JSON.stringify(savedTeam, null, 2)
-      );
-    } else {
-      // Check if team name already exists (case-insensitive)
-      const existingTeam = await Team.findOne({
-        teamName: { $regex: new RegExp(`^${sanitizedTeamName}$`, "i") },
-      });
-      if (existingTeam) {
-        console.log(
-          "saveTeamName - Error: Team name already exists",
-          existingTeam
-        );
-        responseHandler(
-          res,
-          400,
-          "Team name already exists. Please choose another."
-        );
-        return;
-      }
-
-      // Create new team
-      const newTeam = new Team({
-        teamName: teamName.trim(), // Store original case in database
-        createdBy: userId,
-        members: [],
-        addedOn: new Date(),
-      });
-      savedTeam = await newTeam.save();
-      console.log(
-        "saveTeamName - Team created:",
-        JSON.stringify(savedTeam, null, 2)
-      );
-
-      // Update user with the new teamId
-      const updatedUser = await User.findByIdAndUpdate(
-        userId,
-        { teamId: savedTeam._id },
-        { new: true }
-      );
-      console.log(
-        "saveTeamName - Updated user:",
-        JSON.stringify(updatedUser, null, 2)
-      );
-
-      if (!updatedUser) {
-        console.log("saveTeamName - Error: Failed to update user with teamId");
-        responseHandler(res, 500, "Failed to update user with teamId");
-        return;
-      }
+    const newTeam = new Team({teamName: teamName.trim(), createdBy: userId,members: [],addedOn: new Date(),});
+    await newTeam.save();
+    
+    const newteams = [...(creatorUser.teamId ?? []), newTeam._id]
+    const updatedUser = await User.findByIdAndUpdate(userId,{ teamId: newteams },{ new: true }); 
+    if (!updatedUser) {
+      responseHandler(res, 500, "Failed to update user with teamId","error");
+      return;
     }
 
-    responseHandler(
-      res,
-      201,
-      teamId ? "Team name updated successfully." : "Team created successfully.",
-      "success",
-      {
-        teamName: savedTeam.teamName,
-        teamId: savedTeam.id.toString(),
-        createdBy: savedTeam.createdBy,
-        members: savedTeam.members,
-        addedOn: savedTeam.addedOn,
-        createdAt: savedTeam.createdAt,
-        updatedAt: savedTeam.updatedAt,
-        _id: savedTeam.id.toString(),
-      }
-    );
+    responseHandler(res,201,"Team created successfully.","success",{
+        teamName: newTeam.teamName,
+        teamId: newTeam._id,
+        createdBy: newTeam.createdBy,
+        members: newTeam.members,
+        addedOn: newTeam.addedOn,
+        createdAt: newTeam.createdAt,
+        updatedAt: newTeam.updatedAt,
+        _id: newTeam._id,
+      });
   } catch (error) {
-    console.error("saveTeamName - Error:", error);
-    responseHandler(res, 500, "Internal server error");
+    responseHandler(res, 500, "Internal server error","fail");
   }
 };
 
@@ -480,7 +407,7 @@ export const acceptInvitation = async (req: Request, res: Response) => {
           }
         });
       }
-      user.teamId = new mongoose.Types.ObjectId(decoded.teamId);
+      user.teamId = [...user.teamId, new mongoose.Types.ObjectId(decoded.teamId)]
       user.companyName = companyName;
       user.consentGiven = true;
       await user.save();

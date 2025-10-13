@@ -340,24 +340,19 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const userDoc = await User.findOne({ email });
     if (!userDoc) {
-      console.log("login - User not found for email:", email);
       responseHandler(res, 401, "Invalid credentials", "error");
       return;
     }
 
     const user = userDoc.toObject() as IUser;
-    console.log("login - User found:", { userId: user._id, email });
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log("login - Password match:", isMatch);
     if (!isMatch) {
-      console.log("login - Password mismatch for email:", email);
       responseHandler(res, 401, "Invalid credentials", "error");
       return;
     }
 
     // Block inactive users
     if (user.status === "inactive") {
-      console.log("login - Inactive user:", { userId: user._id, email });
       responseHandler(
         res,
         403,
@@ -367,19 +362,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Initialize team variable
-    let team = null;
-
     // Check if user is part of any team (non-admins) or created a team (admins)
     if (!user.roles.includes("Admin")) {
-      team = await Team.findOne({
+     const existingTeam = await Team.findOne({
         $or: [{ "members.user": user._id }, { "members.email": user.email }],
       });
-      if (!team) {
-        console.log("login - User not part of any team:", {
-          userId: user._id,
-          email,
-        });
+      if (!existingTeam) {
         responseHandler(
           res,
           403,
@@ -388,53 +376,51 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         );
         return;
       }
+      const payload = {
+      iss: "ToprakApp",
+      sub: user._id.toString(),
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      roles: user.roles,
+      teamId: existingTeam ? String(existingTeam._id) : null,
+    };
+     const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+    const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+
+    const token = jwt.sign(payload, JWT_SECRET, {expiresIn: JWT_EXPIRES_IN,} as SignOptions);
+    res.status(200).json({
+      status: "success",
+      data: {
+        token,
+        user: {
+          id: user._id.toString(),
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          roles: user.roles,
+          teamId: existingTeam ? String(existingTeam._id) : null,
+        },
+        team: existingTeam
+          ? {
+              id: existingTeam._id,
+              teamName: existingTeam.teamName,
+              primaryUsage: existingTeam.primaryUsage || null,
+            }
+          : null,
+      },
+    });
     } else {
       // For admins, check if they created a team
-      team = await Team.findOne({ createdBy: user._id });
+      const team = await Team.findOne({ createdBy: user._id });
       if (!team) {
-        console.log("login - Creating team for admin:", {
+        console.log("login - Team not created:", {
           userId: user._id,
           email,
         });
-        team = new Team({
-          teamName: "Team",
-          createdBy: user._id,
-          members: [
-            {
-              user: user._id,
-              email: user.email,
-              roles: ["Admin"],
-              status: "active",
-            },
-          ],
-        });
-        await team.save();
-        await User.findByIdAndUpdate(
-          user._id,
-          { teamId: team._id },
-          { new: true }
-        );
-        console.log("login - Team created:", {
-          teamId: team._id,
-          teamName: team.teamName,
-        });
+       
       }
-    }
-
-    // Update user's teamId if not set
-    if (team && !user.teamId) {
-      await User.findByIdAndUpdate(
-        user._id,
-        { teamId: team._id },
-        { new: true }
-      );
-      console.log("login - Updated user teamId:", {
-        userId: user._id,
-        teamId: team._id,
-      });
-    }
-
-    const payload = {
+      const payload = {
       iss: "ToprakApp",
       sub: user._id.toString(),
       firstName: user.firstName,
@@ -443,21 +429,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       roles: user.roles,
       teamId: team ? String(team._id) : null,
     };
-
     const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
     const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
 
     const token = jwt.sign(payload, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN,
     } as SignOptions);
-
-    console.log("login - Generated token for user:", {
-      userId: user._id.toString(),
-      email: user.email,
-      roles: user.roles,
-      teamId: team ? String(team._id) : null,
-    });
-
     res.status(200).json({
       status: "success",
       data: {
@@ -479,6 +456,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           : null,
       },
     });
+
+    }
   } catch (error: any) {
     console.error("login - Error:", {
       message: error.message,
