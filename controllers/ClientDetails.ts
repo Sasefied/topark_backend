@@ -827,11 +827,14 @@ export const getAllClients = async (
       },
       {
         $match: {
-          $and: [
-            { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
-            { clientEmail: { $ne: req.userEmail } },
-            { userId: { $ne: null } },
-          ],
+          myClient: { $size: 0 }, // Only clients NOT in "myclients"
+          clientEmail: { $ne: req.userEmail },
+          userId: { $ne: null }
+          // $and: [
+          //   { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
+          //   { clientEmail: { $ne: req.userEmail } },
+          //   { userId: { $ne: null } },
+          // ],
         },
       },
       {
@@ -1160,18 +1163,9 @@ export const getClientById = async (
 ): Promise<void> => {
   try {
     const { clientId } = req.params;
-    const client = await Client.findOne({ clientId })
-      .select(
-        "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress countryName clientNotes companyReferenceNumber creditLimit preference supplier relatedClientIds createdBy createdAt updatedAt"
-      )
-      .populate(
-        "createdBy",
-        "firstName lastName companyName companyReferenceNumber"
-      );
-
-    if (!client || !client.clientName || !client.clientId) {
-      console.warn("getClientById - Invalid client data:", client);
-      responseHandler(res, 404, "Client not found or invalid data", "error");
+    const client = await Client.findOne({ clientId }).select("userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress countryName clientNotes companyReferenceNumber creditLimit preference supplier relatedClientIds createdBy createdAt updatedAt").populate("createdBy","firstName lastName companyName companyReferenceNumber");
+    if(!client){
+      responseHandler(res, 404, "Client not found", "error");
       return;
     }
 
