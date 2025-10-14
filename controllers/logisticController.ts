@@ -321,8 +321,8 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
     }
 
     // Validate category
-    const allowedCategories = ['Quantity mismatch', 'Quality issue', 'Wrong Variety', 'Others'] as const;
-    if (!issueCategory || !allowedCategories.includes(issueCategory as typeof allowedCategories[number])) {
+    const allowedCategories = ['Quantity mismatch', 'Quality issue', 'Wrong Variety', 'Others'];
+    if (!issueCategory || !allowedCategories.includes(issueCategory)) {
       throw new BadRequestError('Invalid issue category');
     }
 
