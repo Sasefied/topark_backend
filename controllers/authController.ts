@@ -622,69 +622,6 @@ export const resetPassword = async (
   }
 };
 
-// export const getUserProfile = asyncHandler(
-//   async (req: Request, res: Response): Promise<void> => {
-//     const userId = req.userId;
-//     console.log("getUserProfile - userId:", userId); // Debug log
-
-//     // Validate userId
-//     if (!userId) {
-//       throw new BadRequestError("Missing user ID");
-//     }
-//     if (!mongoose.Types.ObjectId.isValid(userId)) {
-//       throw new BadRequestError("Invalid user ID");
-//     }
-
-//     const user = await User.aggregate([
-//       { $match: { _id: new mongoose.Types.ObjectId(userId) } },
-//       {
-//         $lookup: {
-//           from: "teams",
-//           localField: "_id",
-//           foreignField: "createdBy",
-//           as: "teams",
-//         },
-//       },
-//       {
-//         $unwind: {
-//           path: "$teams",
-//           preserveNullAndEmptyArrays: true,
-//         },
-//       },
-//       {
-//         $project: {
-//           _id: 1,
-//           email: 1,
-//           firstName: 1,
-//           roles: 1,
-//           // lastName: 1,
-//           companyName: 1,
-
-//           teams: {
-//             _id: 1,
-//             teamName: 1,
-//             primaryUsage: 1,
-//           },
-//         },
-//       },
-//     ]);
-
-//     console.log("getUserProfile - Aggregation result:", user); // Debug log
-
-//     if (user.length === 0) {
-//       throw new NotFoundError("User not found");
-//     }
-
-//     responseHandler(
-//       res,
-//       200,
-//       "User profile fetched successfully",
-//       "success",
-//       user // Return array to match frontend expectation
-//     );
-//   }
-// );
-
 
 export const getUserProfile = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {

@@ -10,7 +10,6 @@ import Inventory, { IInventory } from "../schemas/Inventory";
 import { AdminProduct } from "../schemas/AdminProduct";
 import { BadRequestError } from "../utils/errors";
 import Team from "../schemas/Team";
-import MyClientModel from "../schemas/MyClient";
 
 const excludeId = (doc: any) => {
   const { _id, ...rest } = doc.toObject();
@@ -529,13 +528,9 @@ export const addClientToUser = async (
     }
 
     // Validate client exists
-     let existingClient = await User.findById(clientId);
+    const existingClient = await Client.findById(clientId);
     if (!existingClient) {
-      existingClient = await Client.findById(clientId);
-    }
-    
-    if (!existingClient) {
-      responseHandler(res, 404, "Client not found in both collection", "error");
+      responseHandler(res, 404, "Client not found", "error");
       return;
     }
 
@@ -626,24 +621,35 @@ export const getClientsForUser = async (
 ): Promise<void> => {
   try {
     const userId = req.userId;
+    const teamId = req.params.teamId; // Get teamId from URL params
+
+    console.log("getClientsForUser - userId:", userId, "teamId:", teamId);
+
     if (!userId || !Types.ObjectId.isValid(userId)) {
       responseHandler(res, 400, "Missing or invalid userId", "error");
       return;
     }
 
+    if (!teamId || !Types.ObjectId.isValid(teamId)) {
+      responseHandler(res, 400, "Missing or invalid teamId", "error");
+      return;
+    }
+
+    // Fetch the logged-in user
     const user = await User.findById(userId);
     if (!user) {
       responseHandler(res, 404, "User not found", "error");
       return;
     }
 
-    const team = await Team.findOne({ "members.email": user.email });
+    // Find the team by teamId
+    const team = await Team.findById(teamId);
     if (!team) {
-      responseHandler(res, 404, "Team not found for this user", "error");
+      responseHandler(res, 404, "Team not found", "error");
       return;
     }
 
-    // Get current member info
+    // Check if user is a member of the team
     const memberInfo = team.members?.find((m) => m.email === user.email);
     if (!memberInfo) {
       responseHandler(res, 400, "User not found in team members", "error");
@@ -653,15 +659,12 @@ export const getClientsForUser = async (
     // Determine if user is admin
     const isAdmin = memberInfo.roles.includes("Admin");
 
-    // Define variable with correct type
+    // Define targetUserId
     let targetUserId: Types.ObjectId;
 
     if (isAdmin) {
-      // If Admin → show their own clients
       targetUserId = new Types.ObjectId(user._id);
-      // console.log(Admin user (${user.email}) - showing own clients);
     } else {
-      // If not Admin → find team admin
       const adminMember = team.members?.find((m) => m.roles.includes("Admin"));
       if (!adminMember) {
         responseHandler(res, 404, "Team admin not found", "error");
@@ -675,12 +678,9 @@ export const getClientsForUser = async (
       }
 
       targetUserId = new Types.ObjectId(adminUser._id);
-      console.log(
-       ` Team member (${user.email}) - showing admin (${adminUser.email}) clients`
-      );
     }
 
-    // Fetch all clients created by the target user (admin or self)
+    // Fetch clients for the target user
     const pipeline = [
       { $match: { userId: targetUserId.toString() } },
       {
@@ -736,9 +736,6 @@ export const getClientsForUser = async (
 
     const clients: any[] = await (MyClient as any).aggregate(pipeline);
 
-    console.log("Client", clients);
-
-    // Map for cleaner response
     const mappedClients = clients.map((client) => ({
       _id: client._id?.toString(),
       userId: client.userId?.toString() || "",
@@ -759,19 +756,19 @@ export const getClientsForUser = async (
       creditLimit: client.creditLimit || { amount: 0, period: 0 },
       preference: client.preference || "Client",
       supplier: client.supplier || undefined,
-      createdBy: client?.createdBy
+      createdBy: client.createdBy
         ? {
-            _id: client?.createdBy._id?.toString() || "",
-            firstName: client?.createdBy?.firstName || "",
-            lastName: client?.createdBy?.lastName || "",
-            companyName: client?.createdBy?.companyName || "",
+            _id: client.createdBy._id?.toString() || "",
+            firstName: client.createdBy.firstName || "",
+            lastName: client.createdBy.lastName || "",
+            companyName: client.createdBy.companyName || "",
             companyReferenceNumber:
-              client?.createdBy?.companyReferenceNumber || "",
+              client.createdBy.companyReferenceNumber || "",
           }
         : null,
-      createdAt: client?.createdAt?.toISOString(),
-      updatedAt: client?.updatedAt?.toISOString(),
-      isOfflineUser: client?.createdBy?.isOfflineUser || false,
+      createdAt: client.createdAt?.toISOString(),
+      updatedAt: client.updatedAt?.toISOString(),
+      isOfflineUser: client.createdBy?.isOfflineUser || null,
     }));
 
     responseHandler(res, 200, "Clients fetched successfully", "success", {
@@ -784,11 +781,11 @@ export const getClientsForUser = async (
       message: error.message,
       stack: error.stack,
       userId: req.userId,
+      teamId: req.params.teamId,
     });
     responseHandler(res, 500, "Internal server error", "error");
-  }
+  }
 };
-
 
 export const getAllClients = async (
   req: Request,
@@ -827,14 +824,11 @@ export const getAllClients = async (
       },
       {
         $match: {
-          myClient: { $size: 0 }, // Only clients NOT in "myclients"
-          clientEmail: { $ne: req.userEmail },
-          userId: { $ne: null }
-          // $and: [
-          //   { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
-          //   { clientEmail: { $ne: req.userEmail } },
-          //   { userId: { $ne: null } },
-          // ],
+          $and: [
+            { _id: { $nin: "$myClient.clientId" } }, // Exclude client IDs from MyClient
+            { clientEmail: { $ne: req.userEmail } },
+            { userId: { $ne: null } },
+          ],
         },
       },
       {
@@ -1163,9 +1157,18 @@ export const getClientById = async (
 ): Promise<void> => {
   try {
     const { clientId } = req.params;
-    const client = await Client.findOne({ clientId }).select("userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress countryName clientNotes companyReferenceNumber creditLimit preference supplier relatedClientIds createdBy createdAt updatedAt").populate("createdBy","firstName lastName companyName companyReferenceNumber");
-    if(!client){
-      responseHandler(res, 404, "Client not found", "error");
+    const client = await Client.findOne({ clientId })
+      .select(
+        "userId clientId clientName clientEmail registeredName workanniversary registeredAddress deliveryAddress countryName clientNotes companyReferenceNumber creditLimit preference supplier relatedClientIds createdBy createdAt updatedAt"
+      )
+      .populate(
+        "createdBy",
+        "firstName lastName companyName companyReferenceNumber"
+      );
+
+    if (!client || !client.clientName || !client.clientId) {
+      console.warn("getClientById - Invalid client data:", client);
+      responseHandler(res, 404, "Client not found or invalid data", "error");
       return;
     }
 

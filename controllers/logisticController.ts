@@ -17,15 +17,6 @@ import Inventory from "../schemas/Inventory";
 import Client from "../schemas/ClientDetails";
 import sendEmail from "../utils/mail";
 
-/**
- * Get all logistic orders
- *
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @route GET /api/logistics
- * @access Private
- * @returns {Promise<void>} - A promise that resolves when the function is complete
- */
 const getAllLogisticOrders = async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 10, teamId } = req.query;
@@ -35,7 +26,7 @@ const getAllLogisticOrders = async (req: Request, res: Response) => {
       {
         $match: {
           teamId: new Types.ObjectId(teamId as string),
-          userId: new Types.ObjectId(req.userId),
+          // userId: new Types.ObjectId(req.userId),
         },
       },
       {
@@ -141,18 +132,6 @@ const getAllLogisticOrders = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Search logistic orders
- *
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @param {string} page - The page number
- * @param {string} limit - The number of items per page
- * @param {string} query - The search query
- * @route GET /api/logistics/search/
- * @access Private
- * @returns {Promise<void>} - A promise that resolves when the function is complete
- */
 const searchLogisticOrders = async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 10, query = "" } = req.query;
@@ -281,11 +260,9 @@ const searchLogisticOrders = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Report an issue with a logistic order item
- * @route POST /api/logistics/:orderItemId/report
- * @access Private
- */
+
+
+
 const reportLogisticOrderItem = async (req: Request, res: Response) => {
   const orderItemIdParam = req.params.orderItemId;
 
@@ -311,65 +288,62 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
     productCompletelyDifferent?: boolean;
   };
 
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
+
   const session = await mongoose.startSession();
   await session.startTransaction();
 
   try {
     // Validate file/proof
     if (!req.file?.path || !req.file.filename) {
-      throw new BadRequestError("Proof is required");
+      throw new BadRequestError('Proof is required');
     }
 
     // Validate and normalize IDs
-    if (
-      !orderItemIdParam ||
-      !mongoose.Types.ObjectId.isValid(orderItemIdParam)
-    ) {
-      throw new BadRequestError("Invalid orderItemId");
+    if (!orderItemIdParam || !mongoose.Types.ObjectId.isValid(orderItemIdParam)) {
+      throw new BadRequestError('Invalid orderItemId');
     }
-    if (!clientId || !mongoose.Types.ObjectId.isValid(clientId)) {
-      throw new BadRequestError("Invalid clientId");
+    if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
+      throw new BadRequestError('Invalid orderId');
+    }
+
+    // Derive clientId if not provided
+    let finalClientId = clientId;
+    if (!finalClientId || !mongoose.Types.ObjectId.isValid(finalClientId)) {
+      const order = await Order.findById(orderId).session(session);
+      if (!order) {
+        throw new NotFoundError('Order not found');
+      }
+      finalClientId = order.clientId?.toString();
+      if (!finalClientId || !mongoose.Types.ObjectId.isValid(finalClientId)) {
+        throw new BadRequestError('Invalid clientId derived from order');
+      }
     }
 
     // Validate category
-    const allowedCategories = [
-      "Quantity mismatch",
-      "Quality issue",
-      "Wrong Variety",
-    ] as const;
-    if (
-      !issueCategory ||
-      !allowedCategories.includes(
-        issueCategory as (typeof allowedCategories)[number]
-      )
-    ) {
-      throw new BadRequestError("Invalid issue category");
+    const allowedCategories = ['Quantity mismatch', 'Quality issue', 'Wrong Variety', 'Others'] as const;
+    if (!issueCategory || !allowedCategories.includes(issueCategory as typeof allowedCategories[number])) {
+      throw new BadRequestError('Invalid issue category');
     }
 
     // Normalize quantity
-    const receivedQtyNum =
-      typeof receivedQuantity === "string"
-        ? Number(receivedQuantity)
-        : receivedQuantity;
-    if (
-      receivedQtyNum == null ||
-      Number.isNaN(receivedQtyNum) ||
-      receivedQtyNum < 0
-    ) {
-      throw new BadRequestError("Invalid receivedQuantity");
+    const receivedQtyNum = typeof receivedQuantity === 'string' ? Number(receivedQuantity) : receivedQuantity;
+    if (receivedQtyNum != null && (Number.isNaN(receivedQtyNum) || receivedQtyNum < 0)) {
+      throw new BadRequestError('Invalid receivedQuantity');
     }
 
     const proof = getStaticFilePath(req, req.file.filename);
 
-    const client = await Client.findById(clientId).session(session);
+    const client = await Client.findById(finalClientId).session(session);
     if (!client) {
-      throw new NotFoundError("Client not found");
+      throw new NotFoundError('Client not found');
     }
-    
+
     const ISSUE_CATEGORIES = {
-      "Quantity mismatch": client?.supplier?.quantityIssueEmail,
-      "Quality issue": client?.supplier?.qualityIssueEmail,
-      "Wrong Variety": client?.supplier?.deliveryDelayIssueEmail,
+      'Quantity mismatch': client?.supplier?.quantityIssueEmail,
+      'Quality issue': client?.supplier?.qualityIssueEmail,
+      'Wrong Variety': client?.supplier?.deliveryDelayIssueEmail,
+      'Others': client?.supplier?.deliveryDelayIssueEmail, // Adjust as needed
     } as const;
 
     const orderItemObjectId = new mongoose.Types.ObjectId(orderItemIdParam);
@@ -401,31 +375,28 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
       ).session(session),
     ]);
 
-    // Commit the transaction before sending the email
+    // Commit the transaction
     await session.commitTransaction();
 
-    // Send email notification (best-effort, do not fail the request if email fails)
-    const toEmails =
-      ISSUE_CATEGORIES[issueCategory as keyof typeof ISSUE_CATEGORIES];
+    // Send email notification (best-effort)
+    const toEmails = ISSUE_CATEGORIES[issueCategory as keyof typeof ISSUE_CATEGORIES];
     if (toEmails) {
-      const recipients = Array.isArray(toEmails)
-        ? toEmails.filter(Boolean).join(",")
-        : toEmails;
+      const recipients = Array.isArray(toEmails) ? toEmails.filter(Boolean).join(',') : toEmails;
 
       const html = [
         `<p>An issue has been reported for order item <strong>${orderItemIdParam}</strong>.</p>`,
-        "<h4>Issue Details</h4>",
-        "<ul>",
+        '<h4>Issue Details</h4>',
+        '<ul>',
         `<li>Category: ${issueCategory}</li>`,
-        `<li>Received Quantity: ${receivedQtyNum}</li>`,
-        additionalNotes ? `<li>Additional Notes: ${additionalNotes}</li>` : "",
+        receivedQtyNum != null ? `<li>Received Quantity: ${receivedQtyNum}</li>` : '',
+        additionalNotes ? `<li>Additional Notes: ${additionalNotes}</li>` : '',
         `<li>Product Unusable: ${!!productUnusable}</li>`,
         `<li>Product Unacceptable: ${!!productUnAcceptable}</li>`,
-        issue ? `<li>Issue Description: ${issue}</li>` : "",
+        issue ? `<li>Issue Description: ${issue}</li>` : '',
         `<li>Product Completely Different: ${!!productCompletelyDifferent}</li>`,
         `</ul>`,
         `<p>Proof: <a href="${proof}" target="_blank" rel="noreferrer">${proof}</a></p>`,
-      ].join("");
+      ].join('');
 
       await sendEmail({
         to: recipients,
@@ -442,26 +413,18 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
       });
     }
 
-    responseHandler(res, 200, "Issue reported successfully", "success");
+    responseHandler(res, 200, 'Issue reported successfully', 'success');
   } catch (error: any) {
     await session.abortTransaction();
-    console.log("Error reporting logistic order:", error);
-    throw new BadRequestError(error.message || "Failed to report issue");
+    console.error('Error reporting logistic order:', error);
+    throw new BadRequestError(error.message || 'Failed to report issue');
   } finally {
     await session.endSession();
   }
 };
 
-/**
- * Marks a logistic order item as "Received Ok".
- *
- * @param {Request} req - Express request object containing the order item ID in params.
- * @param {Response} res - Express response object for sending back the response.
- * @route PATCH /api/logistics/:orderItemId/received-ok
- * @access Private
- * @returns {Promise<void>} - A promise that resolves when the function is complete.
- * @throws {InternalServerError} - Throws an error if updating the order item fails.
- */
+
+
 
 const receivedOkLogisticOrderItem = asyncHandler(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -570,15 +533,6 @@ const receivedOkLogisticOrderItem = asyncHandler(
   }
 );
 
-/**
- * Fetches all logistic ordered items for a given order ID.
- *
- * @param {Request} req - Express request object containing the order ID in params.
- * @param {Response} res - Express response object for sending back the response.
- * @route GET /api/logistics/:orderId/items
- * @access Private
- * @returns {Promise<void>} - A promise that resolves when the function is complete.
- */
 
 const getAllLogisticOrderedItems = async (req: Request, res: Response) => {
   try {
@@ -688,15 +642,6 @@ const getAllLogisticOrderedItems = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Get all reported issues for a specific logistic order
- *
- * @param {Request} req - Express request object containing the orderId in params and pagination options in query
- * @param {Response} res - Express response object used to send the response
- * @route GET /api/logistics/:orderId/reported-issues
- * @access Private
- * @returns {Promise<void>} - A promise that resolves when the function is complete
- */
 
 const getAllLogisticReportedIssues = async (req: Request, res: Response) => {
   try {
