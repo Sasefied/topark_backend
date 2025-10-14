@@ -101,7 +101,7 @@ const getAllInventories: RequestHandler = async (req, res) => {
         $lookup: {
           from: "users",
           let: {
-            supplierUserId: { $arrayElemAt: ["$client.client.userId", 0] },
+            supplierUserId:"$client.userId",
           },
           pipeline: [
             {
