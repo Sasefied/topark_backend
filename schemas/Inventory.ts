@@ -23,7 +23,7 @@ export interface IInventory extends Document {
     | "Ounce"
     | "Milliliter";
   sellByQuantity: string;
-  shelfLife: number;
+  shelfLife: string;
   season: string[];
   countryOfOrigin: string;
   qtyInStock: number;
@@ -97,7 +97,7 @@ const inventorySchema: Schema<IInventory> = new Schema(
     sellByQuantity: { type: String, required: false, default: "" },
 
     shelfLife: {
-      type: Number,
+      type: String,
       required: true,
       min: 0,
     },
