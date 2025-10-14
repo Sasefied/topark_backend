@@ -302,14 +302,15 @@ const createBulkBuyOrders = async (
 };
 
 const getAllBuyOrders = async (req: Request, res: Response): Promise<void> => {
-  const { page = 1, limit = 10, status, search = "" } = req.query;
+  const { page = 1, limit = 10, status, search = "", teamId } = req.query;
 
   try {
     const orderAggregate = Order.aggregate([
       // Match userId first
       {
         $match: {
-          userId: new Types.ObjectId(req.userId),
+          // userId: new Types.ObjectId(req.userId),
+             teamId: new Types.ObjectId(teamId as string),
           ...(status && { orderStatus: status }),
         },
       },

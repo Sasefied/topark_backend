@@ -23,13 +23,13 @@ interface TeamMemberInput {
 
 // STEP 1: Save Team Name
 
-export const saveTeamName = async ( req: Request, res: Response): Promise<void> => {
+export const saveTeamName = async (req: Request, res: Response): Promise<void> => {
   const { teamName } = req.body;
   const userId = req.userId;
 
   if (!teamName || typeof teamName !== "string" || teamName.trim() === "") {
     console.log("saveTeamName - Error: Invalid team name");
-    responseHandler(res,400, "Team name is required and must be a non-empty string","error");
+    responseHandler(res, 400, "Team name is required and must be a non-empty string", "error");
     return;
   }
 
@@ -37,35 +37,52 @@ export const saveTeamName = async ( req: Request, res: Response): Promise<void> 
     const creatorUser = await User.findById(userId);
     if (!creatorUser) {
       console.log("saveTeamName - Error: User not found");
-      responseHandler(res, 404, "User not found","error");
+      responseHandler(res, 404, "User not found", "error");
       return;
     }
 
-    const newTeam = new Team({teamName: teamName.trim(), createdBy: userId,members: [{email:creatorUser.email,roles:creatorUser.roles,status:"active"}],addedOn: new Date(),});
+    const newTeam = new Team({
+      teamName: teamName.trim(),
+      createdBy: userId,
+      members: [{ email: creatorUser.email, roles: creatorUser.roles, status: "active" }],
+      addedOn: new Date(),
+    });
     await newTeam.save();
-    
-    const newteams = [...(creatorUser.teamId ?? []), newTeam._id]
-    const updatedUser = await User.findByIdAndUpdate(userId,{ teamId: newteams },{ new: true }); 
+
+    const newteams = [...(creatorUser.teamId ?? []), newTeam._id];
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { teamId: newteams },
+      { new: true }
+    );
     if (!updatedUser) {
-      responseHandler(res, 500, "Failed to update user with teamId","error");
+      responseHandler(res, 500, "Failed to update user with teamId", "error");
       return;
     }
 
-    responseHandler(res,201,"Team created successfully.","success",{
-        teamName: newTeam.teamName,
-        teamId: newTeam._id,
-        createdBy: newTeam.createdBy,
-        members: newTeam.members,
-        addedOn: newTeam.addedOn,
-        createdAt: newTeam.createdAt,
-        updatedAt: newTeam.updatedAt,
-        _id: newTeam._id,
-      });
+    responseHandler(res, 201, "Team created successfully.", "success", {
+      teamName: newTeam.teamName,
+      teamId: newTeam._id,
+      createdBy: newTeam.createdBy,
+      members: newTeam.members,
+      addedOn: newTeam.addedOn,
+      createdAt: newTeam.createdAt,
+      updatedAt: newTeam.updatedAt,
+      _id: newTeam._id,
+      user: {
+        id: updatedUser._id.toString(),
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        email: updatedUser.email,
+        roles: updatedUser.roles,
+        teamId: updatedUser.teamId, // Return the updated teamId array
+      },
+    });
   } catch (error) {
-    responseHandler(res, 500, "Internal server error","fail");
+    console.error("saveTeamName - Error:", error);
+    responseHandler(res, 500, "Internal server error", "fail");
   }
 };
-
 export const updatePrimaryUsage = async (
   req: Request,
   res: Response
