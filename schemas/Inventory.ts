@@ -28,6 +28,7 @@ export interface IInventory extends Document {
   countryOfOrigin: string;
   qtyInStock: number;
   qtyIncoming: number;
+  tradingPrice: number;
   variety?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
@@ -131,6 +132,10 @@ const inventorySchema: Schema<IInventory> = new Schema(
     qtyInStock: {
       type: Number,
       required: true,
+      default: 0,
+    },
+    tradingPrice: {
+      type: Number,
       default: 0,
     },
     qtyIncoming: {

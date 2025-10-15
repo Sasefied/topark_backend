@@ -8,185 +8,332 @@ import asyncHandler from "express-async-handler";
 import Client from "../schemas/ClientDetails";
 import { BadRequestError } from "../utils/errors";
 import Team from "../schemas/Team";
+import OrderItem from "../schemas/OrderItem";
+//code by saif
+// const getAllInventories: RequestHandler = async (req, res) => {
+//   try {
+//     const { page = 1, limit = 10, search, teamId, status } = req.query;
 
+//     if (!req.userId || !mongoose.Types.ObjectId.isValid(req.userId)) {
+//       return res.status(401).json({ message: "Invalid or missing userId" });
+//     }
+
+//     if (typeof teamId !== "string" || !Types.ObjectId.isValid(teamId)) {
+//       return res.status(400).json({ message: "Invalid or missing teamId" });
+//     }
+
+//     const pageNumber = parseInt(page as string) || 1;
+//     const limitNumber = parseInt(limit as string) || 10;
+//     const searchTerm = search as string || "";
+//     const statusFilter = status === 'before' || status === 'after' ? status : 'all';
+//     const teamObjectId = new Types.ObjectId(teamId);
+
+//     const orderAggregate = Order.aggregate([
+//       { $match: { teamId: teamObjectId } },
+//       { $lookup: { from: "orderitems", localField: "_id", foreignField: "orderId", as: "orderItems" } },
+//       { $unwind: { path: "$orderItems", preserveNullAndEmptyArrays: true } },
+      
+//       // 🚀 Inventory lookup
+//       { 
+//         $lookup: { 
+//           from: "inventories", 
+//           localField: "orderItems._id", 
+//           foreignField: "orderItemId", 
+//           as: "inventory" 
+//         } 
+//       },
+//       { $unwind: { path: "$inventory", preserveNullAndEmptyArrays: true } },
+      
+//       // 🚀 FIXED: AdminProduct lookup - PRIORITY: inventory FIRST, then orderItem
+//       { 
+//         $lookup: { 
+//           from: "adminproducts", 
+//           let: { 
+//             inventoryId: "$inventory.adminProductId",  // ✅ PRIORITY 1
+//             orderItemId: "$orderItems.adminProductId"  // ✅ PRIORITY 2
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $or: [
+//                     // ✅ TRY INVENTORY FIRST
+//                     {
+//                       $and: [
+//                         { $ne: ["$$inventoryId", null] },
+//                         { $ne: ["$$inventoryId", ""] },
+//                         { $eq: ["$_id", { $toObjectId: "$$inventoryId" }] }
+//                       ]
+//                     },
+//                     // ✅ THEN ORDERITEM
+//                     {
+//                       $and: [
+//                         { $ne: ["$$orderItemId", null] },
+//                         { $ne: ["$$orderItemId", ""] },
+//                         { $eq: ["$_id", { $toObjectId: "$$orderItemId" }] }
+//                       ]
+//                     }
+//                   ]
+//                 }
+//               }
+//             }
+//           ],
+//           as: "adminProduct" 
+//         } 
+//       },
+//       { $unwind: { path: "$adminProduct", preserveNullAndEmptyArrays: true } },
+      
+//       // 🚀 CREATE FULL INVENTORY IF MISSING (YOUR ORIGINAL LOGIC - UNCHANGED)
+//       {
+//         $addFields: {
+//           inventory: {
+//             $cond: {
+//               if: { $eq: ["$inventory", null] },
+//               then: {
+//                 _id: new Types.ObjectId(),
+//                 userId: req.userId,
+//                 adminProductId: "$orderItems.adminProductId",
+//                 clientId: "$clientId",
+//                 orderItemId: "$orderItems._id",
+//                 teamId: "$teamId",
+//                 size: { $ifNull: ["$adminProduct.size", "Small"] },
+//                 color: { $ifNull: ["$adminProduct.color", null] },
+//                 vat: null,
+//                 sellBy: { $ifNull: ["$adminProduct.sellBy", "Kg"] },
+//                 sellByQuantity: "",
+//                 shelfLife: { $ifNull: ["$adminProduct.shelfLife", "6"] },
+//                 season: { $ifNull: ["$adminProduct.season", []] },
+//                 countryOfOrigin: { $ifNull: ["$adminProduct.countryOfOrigin", "USA"] },
+//                 qtyInStock: 0,
+//                 qtyIncoming: {
+//                   $cond: [
+//                     { $eq: ["$orderStatus", "Delivered"] },
+//                     0,
+//                     "$orderItems.quantity"
+//                   ]
+//                 },
+//                 variety: { $ifNull: ["$adminProduct.variety", null] }, // ✅ FIXED: Uses adminProduct
+//                 supplierName: { $ifNull: ["$adminProduct.supplierName", "Default Supplier"] },
+//                 createdAt: "$$NOW",
+//                 updatedAt: "$$NOW"
+//               },
+//               else: "$inventory" // ✅ Keep existing inventory AS-IS
+//             }
+//           }
+//         }
+//       },
+      
+//       // 🔍 FILTERS (UNCHANGED)
+//       ...(searchTerm ? [{ $match: { 
+//         $or: [
+//           { "adminProduct.productName": { $regex: searchTerm, $options: "i" } },
+//           { "orderItems.adminProductId": { $regex: searchTerm, $options: "i" } }
+//         ]
+//       } }] : []),
+//       ...(statusFilter !== 'all' ? [{
+//         $match: {
+//           $expr: {
+//             $cond: [
+//               { $eq: ["$orderStatus", "Delivered"] },
+//               { $eq: [statusFilter, "after"] },
+//               { $eq: [statusFilter, "before"] }
+//             ]
+//           }
+//         }
+//       }] : []),
+      
+//       // ✅ YOUR ORIGINAL PROJECTION (ONLY 2 LINES FIXED)
+//       {
+//         $project: {
+//           _id: { $ifNull: ["$inventory._id", new Types.ObjectId()] },
+//           userId: { $ifNull: ["$inventory.userId", req.userId] },
+//           clientId: "$clientId",
+//           orderItemId: "$orderItems._id",
+//           teamId: { $ifNull: ["$inventory.teamId", "$teamId"] },
+//           size: { $ifNull: ["$inventory.size", "$adminProduct.size", "Small"] },
+//           color: { $ifNull: ["$inventory.color", "$adminProduct.color", null] },
+//           vat: { $ifNull: ["$inventory.vat", null] },
+//           sellBy: { $ifNull: ["$inventory.sellBy", "$adminProduct.sellBy", "Kg"] },
+//           sellByQuantity: { $ifNull: ["$inventory.sellByQuantity", ""] },
+//           shelfLife: { $ifNull: ["$inventory.shelfLife", "$adminProduct.shelfLife", "6"] },
+//           season: { $ifNull: ["$inventory.season", "$adminProduct.season", []] },
+//           countryOfOrigin: { $ifNull: ["$inventory.countryOfOrigin", "$adminProduct.countryOfOrigin", "USA"] },
+//           qtyInStock: { $ifNull: ["$inventory.qtyInStock", 0] },
+//           qtyIncoming: {
+//             $cond: [
+//               { $eq: ["$orderStatus", "Delivered"] },
+//               0,
+//               { $ifNull: ["$inventory.qtyIncoming", "$orderItems.quantity"] }
+//             ]
+//           },
+//           variety: { 
+//             $ifNull: ["$inventory.variety", "$adminProduct.variety", null] 
+//           }, // ✅ FIXED #1: Add adminProduct fallback
+//           createdAt: { $ifNull: ["$inventory.createdAt", "$$NOW"] },
+//           updatedAt: { $ifNull: ["$inventory.updatedAt", "$$NOW"] },
+          
+//           // ✅ FIXED #2: AdminProduct OUTSIDE inventory
+//           adminProduct: {
+//             _id: { $ifNull: ["$adminProduct._id", null] }, // ✅ NOT from orderItems
+//             productName: { $ifNull: ["$adminProduct.productName", "Unknown Product"] },
+//             productAlias: { $ifNull: ["$adminProduct.productAlias", ""] },
+//             productCode: { $ifNull: ["$adminProduct.productCode", "N/A"] },
+//             variety: { $ifNull: ["$adminProduct.variety", null] },
+//             size: { $ifNull: ["$adminProduct.size", "Small"] },
+//             color: { $ifNull: ["$adminProduct.color", null] },
+//             productType: { $ifNull: ["$adminProduct.productType", ""] },
+//             supplierName: { $ifNull: ["$adminProduct.supplierName", ""] },
+//             comments: { $ifNull: ["$adminProduct.comments", ""] },
+//             createdAt: { $ifNull: ["$adminProduct.createdAt", "$$NOW"] },
+//             updatedAt: { $ifNull: ["$adminProduct.updatedAt", "$$NOW"] },
+//           },
+          
+//           supplierName: { 
+//             $ifNull: ["$inventory.supplierName", ""] 
+//           },
+          
+//           orderItem: {
+//             _id: "$orderItems._id",
+//             orderId: "$orderItems.orderId",
+//             inventoryId: "$orderItems.inventoryId",
+//             quantity: "$orderItems.quantity",
+//             price: "$orderItems.price",
+//             outstandingPrice: "$orderItems.outstandingPrice",
+//             deliveryDate: "$orderItems.deliveryDate",
+//             extraCostPrice: "$orderItems.extraCostPrice",
+//             status: "$orderItems.status",
+//             createdAt: "$orderItems.createdAt",
+//             updatedAt: "$orderItems.updatedAt",
+//           },
+//           outstandingPrice: "$orderItems.outstandingPrice"
+//         }
+//       }
+//     ]);
+
+//     const inventories = await (Order as any).aggregatePaginate(orderAggregate, {
+//       page: pageNumber,
+//       limit: limitNumber,
+//       customLabels: { docs: "inventories", totalDocs: "totalInventories" },
+//     });
+
+//     res.status(200).json({
+//       status: "success",
+//       message: "Orders fetched successfully",
+//       data: inventories
+//     });
+
+//   } catch (error: any) {
+//     console.error("Error fetching inventories:", error.message);
+//     res.status(500).json({ status: "error", message: "Error fetching inventories", error: error.message });
+//   }
+// };
+
+
+
+// code by ansh of inventory
 const getAllInventories: RequestHandler = async (req, res) => {
   try {
-    const { page, limit, search, teamId } = req.query;
+    const { page = 1, limit = 10, search = "", teamId } = req.query;
 
+    // Validate user
     if (!req.userId || !mongoose.Types.ObjectId.isValid(req.userId)) {
       return res.status(401).json({ message: "Invalid or missing userId" });
     }
 
-    // Normalize and validate query params
-    const pageStr = Array.isArray(page) ? page[0] : page;
-    const limitStr = Array.isArray(limit) ? limit[0] : limit;
-    const searchStr = Array.isArray(search) ? search[0] : search;
-    const teamIdStr = Array.isArray(teamId) ? teamId[0] : teamId;
-
-    if (typeof teamIdStr !== "string" || !Types.ObjectId.isValid(teamIdStr)) {
+    if (!teamId || typeof teamId !== "string" || !Types.ObjectId.isValid(teamId)) {
       return res.status(400).json({ message: "Invalid or missing teamId" });
     }
 
-    const pageNumber = (() => {
-      const n = typeof pageStr === "string" ? parseInt(pageStr, 10) : 1;
-      return Number.isFinite(n) && n > 0 ? n : 1;
-    })();
+    const teamObjectId = new Types.ObjectId(teamId as string);
+    const pageNumber = parseInt(page as string);
+    const limitNumber = parseInt(limit as string);
+    const skip = (pageNumber - 1) * limitNumber;
 
-    const limitNumber = (() => {
-      const n = typeof limitStr === "string" ? parseInt(limitStr, 10) : 10;
-      return Number.isFinite(n) && n > 0 ? n : 10;
-    })();
+    // Get total orders count for pagination
+    const totalOrders = await Order.countDocuments({ teamId: teamObjectId });
 
-    const searchTerm = typeof searchStr === "string" ? searchStr : "";
+    // Get orders for the team with pagination and latest first
+    const orders = await Order.find({ teamId: teamObjectId })
+      .populate("clientId", "clientName")
+      .sort({ createdAt: -1 }) // 🔹 sort latest first
+      .skip(skip)
+      .limit(limitNumber)
+      .lean();
 
-    const teamObjectId = new Types.ObjectId(teamIdStr);
+    const allOrderIds = orders.map(order => order._id);
 
-    // Build the aggregation stages dynamically for optimization
-    const stages: PipelineStage[] = [
-      {
-        $match: {
-          teamId: { $eq: teamObjectId },
+    // Get order items and populate inventory and nested adminProductId
+    const allOrderItems = await OrderItem.find({
+      orderId: { $in: allOrderIds }
+    })
+      .populate({
+        path: "inventoryId",
+        select: "userId adminProductId clientId orderItemId teamId size color sellBy sellByQuantity shelfLife season countryOfOrigin qtyInStock qtyIncoming variety tradingPrice",
+        populate: {
+          path: "adminProductId",
+          select: "productName productAlias productCode variety size color productType comments createdAt updatedAt"
         },
-      },
-      {
-        $lookup: {
-          from: "adminproducts",
-          localField: "adminProductId",
-          foreignField: "_id",
-          as: "adminProduct",
-        },
-      },
-      {
-        $unwind: {
-          path: "$adminProduct",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-    ];
+        options: { lean: true }
+      })
+      .lean();
 
-    // Add search match after adminProduct lookup if search is provided
-    if (searchTerm) {
-      stages.push({
-        $match: {
-          "adminProduct.productName": {
-            $regex: searchTerm,
-            $options: "i",
-          },
+    // Map order items to orders
+    const orderMap: Record<string, any> = {};
+    for (const item of allOrderItems) {
+      const orderId = (item.orderId as mongoose.Schema.Types.ObjectId).toString();
+      orderMap[orderId] = {
+        OrderItem: {
+          _id: item._id,
+          quantity: item.quantity,
+          price: item.price,
+          outstandingPrice: item.outstandingPrice,
+          deliveryDate: item.deliveryDate,
+          extraCostPrice: item.extraCostPrice,
+          status: item.status,
         },
-      } as PipelineStage);
+        Inventory: item.inventoryId
+      };
     }
 
-    // Continue with other stages
-    stages.push(
-      {
-        $lookup: {
-          from: "clients",
-          localField: "clientId",
-          foreignField: "_id",
-          as: "client",
-        },
-      },
-      {
-        $unwind: {
-          path: "$client",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $addFields: {
-          clientName: "$client.name",
-        },
-      },
-      {
-        $lookup: {
-          from: "users",
-          let: {
-            supplierUserId:"$client.userId",
-          },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ["$_id", "$$supplierUserId"] },
-              },
-            },
-            {
-              $project: {
-                _id: 1,
-                firstName: 1,
-                lastName: 1,
-              },
-            },
-          ],
-          as: "supplierUser",
-        },
-      },
-      {
-        $addFields: {
-          supplierName: {
-            $cond: {
-              if: { $gt: [{ $size: "$supplierUser" }, 0] },
-              then: {
-                $concat: [
-                  { $arrayElemAt: ["$supplierUser.firstName", 0] },
-                  " ",
-                  { $arrayElemAt: ["$supplierUser.lastName", 0] },
-                ],
-              },
-              else: null,
-            },
-          },
-        },
-      },
-      {
-        $lookup: {
-          from: "orderitems",
-          localField: "orderItemId",
-          foreignField: "_id",
-          as: "orderItem",
-        },
-      },
-      {
-        $unwind: {
-          path: "$orderItem",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $addFields: {
-          outstandingPrice: {
-            $ifNull: ["$orderItem.outstandingPrice", 0],
-          },
-        },
-      },
-      {
-        $project: {
-          client: 0,
-          supplierUser: 0,
-        },
-      }
-    );
+    // Merge orders with their order item & inventory
+    const updatedOrders = orders.map(order => {
+      const id = order._id.toString();
+      return {
+        ...order,
+        OrderItem: orderMap[id]?.OrderItem,
+        Inventory: orderMap[id]?.Inventory
+      };
+    });
 
-    const inventoryAggregate = Inventory.aggregate(stages);
+    // Compute qtyInStock and qtyIncoming
+    const data = updatedOrders.map(order => {
+      const qtyIncoming = order.orderStatus === "Pending" ? order.OrderItem?.quantity || 0 : 0;
+      const qtyInStock = order.orderStatus !== "Pending" ? order.OrderItem?.quantity || 0 : 0;
 
-    const inventories = await (Inventory as any).aggregatePaginate(
-      inventoryAggregate,
-      {
-        page: pageNumber,
-        limit: limitNumber,
-        customLabels: {
-          docs: "inventories",
-          totalDocs: "totalInventories",
-        },
-      }
-    );
+      return {
+        ...order,
+        Inventory: {
+          ...order.Inventory,
+          qtyInStock,
+          qtyIncoming
+        }
+      };
+    });
 
-    console.log("Fetched inventories:", JSON.stringify(inventories, null, 2));
-    res.status(200).json(inventories);
+    return res.status(200).json({
+      data,
+      length: updatedOrders.length,
+      total: totalOrders,
+      page: pageNumber,
+      limit: limitNumber,
+      totalPages: Math.ceil(totalOrders / limitNumber)
+    });
   } catch (error: any) {
-    console.error("Error fetching inventories:", error.message, error.stack);
-    res
-      .status(500)
-      .json({ message: "Error fetching inventories", error: error.message });
+    return res.status(500).json({
+      status: "error",
+      message: "Error fetching inventories",
+      error: error.message
+    });
   }
 };
 
@@ -362,14 +509,22 @@ const getDeliveredOrders: RequestHandler = async (req, res) => {
 const updateTradingPrice = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { tradingPrice } = req.body;
+  if(!id || !mongoose.isValidObjectId(id)) {
+    responseHandler(res,400,"Invalid or missing inventory id","error")
+    return
+  }
+  
+  if(!tradingPrice){
+    responseHandler(res,404,"Trading price is required","error")
+    return
+  }
 
-  await Inventory.updateOne(
-    { _id: id },
-    {
-      tradingPrice,
-    }
-  );
-
+  const existingInventory = await Inventory.findById(id)
+  if(!existingInventory) {
+    responseHandler(res,404,"Product not found in inventory","error")
+    return
+  }
+  await Inventory.findByIdAndUpdate(id,{tradingPrice});
   responseHandler(res, 200, "Trading price updated successfully", "success");
 });
 

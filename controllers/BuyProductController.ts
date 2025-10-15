@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import Inventory from "../schemas/Inventory";
 import { responseHandler } from "../utils/responseHandler";
-import { Types } from "mongoose";
+import mongoose, { mongo, Types } from "mongoose";
 import MyClientModel from "../schemas/MyClient";
 import Client from "../schemas/ClientDetails";
 import Team from "../schemas/Team";
@@ -10,7 +10,6 @@ const searchBuyProducts = async (req: Request, res: Response) => {
   try {
     const { query = "", page = "1", limit = "10", teamId } = req.query;
     const team = await Team.findById(teamId);
-    console.log("team-----",team)
     if(!team){
        return responseHandler(res, 200, "No buy orders found", "success", {
         buyOrders: [],
@@ -26,11 +25,7 @@ const searchBuyProducts = async (req: Request, res: Response) => {
       });
     }
 
-    const myClient = await MyClientModel.findOne({ userId: team.createdBy })
-      .select("clientId client")
-      .lean();
-
-    console.log("myClient:", myClient);
+    const myClient = await MyClientModel.findOne({ userId: team.createdBy }).select("clientId client").lean();
     if (!myClient || !myClient.clientId || myClient.clientId.length === 0) {
       // No clients associated with this user, return empty results
       return responseHandler(res, 200, "No buy orders found", "success", {
@@ -47,111 +42,25 @@ const searchBuyProducts = async (req: Request, res: Response) => {
       });
     }
 
-    const allowedClientIds = myClient?.client?.map(
-      (client: any) => client.clientId
-    );
-
-    console.log("allowedClientIds:", allowedClientIds);
-    console.log("userId", req.userId);
-
-    const pipeline = [
-      // Initial match: Exclude own userId
-      {
-        $match: {
-          $and: [
-            // { userId: { $ne: new Types.ObjectId(req.userId) } },
-            { clientId: { $in: allowedClientIds } },
-          ],
-        },
-      },
-      // Lookup client first to filter by allowed client IDs
-      {
-        $lookup: {
-          from: "clients",
-          localField: "clientId",
-          foreignField: "_id",
-          as: "client",
-        },
-      },
-      {
-        $unwind: {
-          path: "$client",
-          preserveNullAndEmptyArrays: false, // Change to false to exclude items without matching clients
-        },
-      },
-      // Lookup adminProduct
-      {
-        $lookup: {
-          from: "adminproducts",
-          localField: "adminProductId",
-          foreignField: "_id",
-          as: "adminProduct",
-        },
-      },
-      {
-        $unwind: {
-          path: "$adminProduct",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      // Apply search query (after lookups to search joined fields)
-      {
-        $match: {
-          $or: [
-            { "adminProduct.productName": { $regex: query, $options: "i" } },
-            { "adminProduct.productAlias": { $regex: query, $options: "i" } },
-            { "adminProduct.productCode": { $regex: query, $options: "i" } },
-            { "client.clientName": { $regex: query, $options: "i" } },
-          ],
-        },
-      },
-      // Project required fields
-      {
-        $project: {
-          _id: 1,
-          adminProductId: 1,
-          userId: 1,
-          clientId: 1,
-          grade: 1,
-          pricePerUnit: 1,
-          qtyInStock: 1,
-          qtyIncoming: 1,
-          sourceCountry: 1,
-          ccy: 1,
-          buyingPrice: 1,
-          tradingPrice: 1,
-          adminProduct: {
-            productName: { $ifNull: ["$adminProduct.productName", "N/A"] },
-            productAlias: { $ifNull: ["$adminProduct.productAlias", "N/A"] },
-            productCode: { $ifNull: ["$adminProduct.productCode", "N/A"] },
-            size: { $ifNull: ["$adminProduct.size", "N/A"] },
-            color: { $ifNull: ["$adminProduct.color", "N/A"] },
-            variety: { $ifNull: ["$adminProduct.variety", "N/A"] },
-          },
-          client: {
-            _id: 1,
-            clientName: { $ifNull: ["$client.clientName", "N/A"] },
-            clientId: { $ifNull: ["$client.clientId", "N/A"] },
-            countryName: { $ifNull: ["$client.countryName", "N/A"] }
-          },
-        },
-      },
-    ];
-
-    const result = await (Inventory as any).aggregatePaginate(
-      Inventory.aggregate(pipeline),
-      {
-        page,
-        limit,
-        customLabels: {
-          docs: "buyOrders",
-          totalDocs: "totalBuyOrders",
-        },
+    const allowedClientIds = myClient?.client?.map((client: any) => client.clientId);
+    const inventory = await Inventory.find({clientId:{$in:allowedClientIds}}).populate("adminProductId clientId","clientName productName productAlias productCode variety referenceNumber size color productType comments")
+    const object:any = {}
+    for(const product of inventory){
+      const id = (product.clientId as mongoose.Schema.Types.ObjectId).toString() as string
+      if(object[id]){
+        const allids = object[id].map((obj:any)=>(obj.adminProductId._id.toString()))
+        const newid = (product.adminProductId as any)._id;
+        if(!allids.includes(newid.toString())) object[id].push(product)
+      } else {
+        object[id] = [product]
       }
-    );
-
-    console.log("Search Result:", JSON.stringify(result, null, 2));
-    responseHandler(res, 200, "Buy orders found", "success", result);
+    }
+    const updatedarray:any = []
+    Object.keys(object).map(key=>{
+      updatedarray.push(...object[key])
+    })
+    
+    responseHandler(res, 200, "Buy orders found", "success",updatedarray);
   } catch (error) {
     console.error("Error searching buy orders:", error);
     responseHandler(res, 500, "Internal server error");
