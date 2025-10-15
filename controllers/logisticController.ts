@@ -321,7 +321,7 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
     }
 
     // Validate category
-    const allowedCategories = ['Quantity mismatch', 'Quality issue', 'Wrong Variety', 'Others'];
+    const allowedCategories = ['Quantity mismatch', 'Quality issue', 'Wrong Variety', 'Others',"Return to supplier"];
     if (!issueCategory || !allowedCategories.includes(issueCategory)) {
       throw new BadRequestError('Invalid issue category');
     }
@@ -344,6 +344,7 @@ const reportLogisticOrderItem = async (req: Request, res: Response) => {
       'Quality issue': client?.supplier?.qualityIssueEmail,
       'Wrong Variety': client?.supplier?.deliveryDelayIssueEmail,
       'Others': client?.supplier?.deliveryDelayIssueEmail, // Adjust as needed
+      "Return to supplier":client?.supplier?.returnToSupplierEmail,
     } as const;
 
     const orderItemObjectId = new mongoose.Types.ObjectId(orderItemIdParam);

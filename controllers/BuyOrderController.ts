@@ -314,6 +314,14 @@ const getAllBuyOrders = async (req: Request, res: Response): Promise<void> => {
           ...(status && { orderStatus: status }),
         },
       },
+      {
+        $lookup:{
+          from: "users",
+          localField:"userId",
+          foreignField:"_id",
+          as:"users"
+        }
+      },
       // Lookup order items
       {
         $lookup: {

@@ -29,7 +29,7 @@ const ReportedIssueSchema = new Schema<IReportedIssue>(
     issueCategory: {
       type: String,
       required: true,
-      enum: ["Quantity mismatch", "Quality issue", "Wrong Variety", "Other"],
+      enum: ["Quantity mismatch", "Quality issue", "Wrong Variety", "Other","Return to supplier"],
     },
     receivedQuantity: { type: Number },
     proof: { type: String },
